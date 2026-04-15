@@ -176,63 +176,36 @@ def delete_document(document_id: str) -> bool:
     return cursor.rowcount > 0
 
 
-def create_chunk(
-    *,
-    document_id: str,
-    chunk_index: int,
-    content: str,
-    page_number: int | None,
-    section: str | None,
-    start_char: int,
-    end_char: int,
-    source_label: str,
-) -> str:
-    chunk_id = new_id("chunk")
-    with connect() as connection:
-        connection.execute(
-            """
-            INSERT INTO document_chunks (
-                id, document_id, chunk_index, content, page_number, section,
-                start_char, end_char, source_label, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                chunk_id,
-                document_id,
-                chunk_index,
-                content,
-                page_number,
-                section,
-                start_char,
-                end_char,
-                source_label,
-                _now(),
-            ),
-        )
-    return chunk_id
-
-
 def replace_document_chunks(document_id: str, chunks: list[dict[str, Any]]) -> list[str]:
+    chunk_ids: list[str] = []
     with connect() as connection:
         connection.execute(
             "DELETE FROM document_chunks WHERE document_id = ?",
             (document_id,),
         )
-
-    chunk_ids: list[str] = []
-    for chunk in chunks:
-        chunk_ids.append(
-            create_chunk(
-                document_id=document_id,
-                chunk_index=chunk["chunk_index"],
-                content=chunk["content"],
-                page_number=chunk.get("page_number"),
-                section=chunk.get("section"),
-                start_char=chunk.get("start_char", 0),
-                end_char=chunk.get("end_char", 0),
-                source_label=chunk["source_label"],
+        for chunk in chunks:
+            chunk_id = new_id("chunk")
+            chunk_ids.append(chunk_id)
+            connection.execute(
+                """
+                INSERT INTO document_chunks (
+                    id, document_id, chunk_index, content, page_number, section,
+                    start_char, end_char, source_label, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    chunk_id,
+                    document_id,
+                    chunk["chunk_index"],
+                    chunk["content"],
+                    chunk.get("page_number"),
+                    chunk.get("section"),
+                    chunk.get("start_char", 0),
+                    chunk.get("end_char", 0),
+                    chunk["source_label"],
+                    _now(),
+                ),
             )
-        )
     return chunk_ids
 
 

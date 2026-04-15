@@ -93,10 +93,7 @@ def chunk_pages(
                     current_length += 2
                 current_parts.append(part)
                 current_length += len(part)
-                if current_start == 0:
-                    current_start = 0
 
         flush_current(current_start + current_length)
 
     return chunks
-

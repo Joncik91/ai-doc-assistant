@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.api.dependencies import AuthContext, get_auth_context
+from app.config import get_settings
 from app.ingestion.service import ingest_upload
 from app.models.document import (
     DocumentDeleteResponse,
@@ -16,10 +19,35 @@ from app.retrieval.store import remove_document as remove_document_vectors
 from app.storage.documents import delete_document, get_document, list_documents
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
+logger = logging.getLogger(__name__)
+READ_CHUNK_SIZE_BYTES = 1024 * 1024
 
 
 async def _read_upload(file: UploadFile) -> bytes:
-    data = await file.read()
+    settings = get_settings()
+    max_size_bytes = settings.max_upload_size_bytes
+
+    if file.size is not None and file.size > max_size_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Uploaded file exceeds the {max_size_bytes}-byte limit.",
+        )
+
+    chunks: list[bytes] = []
+    total_size = 0
+    while True:
+        chunk = await file.read(READ_CHUNK_SIZE_BYTES)
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > max_size_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Uploaded file exceeds the {max_size_bytes}-byte limit.",
+            )
+        chunks.append(chunk)
+
+    data = b"".join(chunks)
     if not data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
     return data
@@ -66,7 +94,19 @@ async def remove_document(
     document_id: str,
     _: AuthContext = Depends(get_auth_context),
 ) -> DocumentDeleteResponse:
-    remove_document_vectors(document_id)
+    document = get_document(document_id)
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    try:
+        remove_document_vectors(document_id)
+    except Exception as exc:  # noqa: BLE001 - surface vector-store outages at the API boundary
+        logger.error("Failed to remove vectors for %s: %s", document_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Vector store unavailable. Document was not deleted.",
+        ) from exc
+
     deleted = delete_document(document_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")

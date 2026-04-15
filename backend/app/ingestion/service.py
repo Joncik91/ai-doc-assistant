@@ -6,11 +6,12 @@ import hashlib
 import re
 from pathlib import Path
 
-from fastapi import HTTPException, UploadFile, status
+from fastapi import HTTPException, status
 
 from app.ingestion.chunker import chunk_pages
 from app.ingestion.extractors import extract_document
 from app.models.document import DocumentRecord, DocumentStatus
+from app.retrieval.store import index_document
 from app.storage.database import get_storage_root
 from app.storage.documents import (
     create_document,
@@ -19,22 +20,11 @@ from app.storage.documents import (
     replace_document_chunks,
     update_document,
 )
-from app.retrieval.store import index_document
 
 
 def _safe_filename(filename: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(filename).name).strip("._")
     return cleaned or "document"
-
-
-async def _read_upload(upload: UploadFile) -> bytes:
-    data = await upload.read()
-    if not data:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Uploaded file is empty",
-        )
-    return data
 
 
 def _fingerprint(data: bytes) -> str:
@@ -132,6 +122,22 @@ def ingest_upload(
             },
         )
         return indexed_document or document, True, len(chunk_payloads)
+    except ValueError as exc:
+        update_document(
+            document.id,
+            status=DocumentStatus.failed,
+            error_message=str(exc),
+        )
+        create_ingestion_event(
+            document.id,
+            event_type="failed",
+            message="Document ingestion failed validation.",
+            details={"error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:  # noqa: BLE001 - persist the failure for the operator
         update_document(
             document.id,

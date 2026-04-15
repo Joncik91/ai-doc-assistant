@@ -104,6 +104,7 @@ Key variables (see `.env.example`):
 - `LLM_API_KEY` – API key for the provider
 - `LLM_MODEL` – Model name
 - `CHROMA_PERSIST_DIRECTORY` – Vector store location
+- `MAX_UPLOAD_SIZE_BYTES` – Maximum allowed upload size
 - `DATABASE_URL` – SQLite database path
 - `SECRET_KEY` – JWT secret (change in production)
 

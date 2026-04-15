@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     chroma_persist_directory: str = "./data/chroma"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     document_storage_directory: str = "./data/documents"
+    max_upload_size_bytes: int = 10 * 1024 * 1024
 
     # Database
     database_url: str = "sqlite:///./data/app.db"
