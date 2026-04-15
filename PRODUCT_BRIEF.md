@@ -1,4 +1,4 @@
-# Product Brief: ABB AI Document Assistant
+# Product Brief: AI Document Assistant
 
 ## Overview
 A secure, enterprise-grade Retrieval-Augmented Generation (RAG) application that ingests internal documents and provides accurate, cited answers to business queries. Built to demonstrate full AI product lifecycle competency — from design to production-ready deployment.

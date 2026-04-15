@@ -159,6 +159,10 @@ npm run test
 
 Sprint 1 supports local backend/frontend startup plus Docker runtime scaffolding. Deployment docs and Kubernetes assets are planned for a later sprint.
 
+## Roadmap
+
+The sprint plan is tracked in [`docs/SPRINTS.md`](docs/SPRINTS.md).
+
 ## License
 
 Built as a portfolio project.

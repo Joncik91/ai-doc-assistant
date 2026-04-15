@@ -1,4 +1,4 @@
-# PRD: ABB AI Document Assistant
+# PRD: AI Document Assistant
 
 ## Objective
 
