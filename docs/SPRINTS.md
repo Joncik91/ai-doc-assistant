@@ -31,15 +31,16 @@ This repository follows a four-sprint delivery plan. Sprint 1 is complete; later
 
 ## Sprint 3: Operator experience and guardrails
 
-**Status:** Planned
+**Status:** Complete
 
 **Goal:** deliver the browser-based operator workflow and make safety behavior visible in the product.
 
-**Planned scope**
-- Protected operator UI shell and document management screens
-- Chat UI with session-scoped follow-ups and citation cards
-- Audit history surfaces
-- Harmful/off-topic filtering and rate limiting
+**Delivered**
+- Protected operator UI shell with JWT and API-key sign-in
+- Document management screens with upload, duplicate awareness, and delete actions
+- Chat UI with session memory, guardrail preflight, and citation cards
+- Audit history view with filtering and backend event logging
+- Harmful/off-topic filtering and rate limiting in the backend
 
 ## Sprint 4: Production-demo polish
 

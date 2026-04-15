@@ -76,11 +76,9 @@ npm run dev
 │   │   ├── main.tsx
 │   │   ├── App.tsx
 │   │   ├── api/          # API client
-│   │   ├── features/     # Feature modules
-│   │   ├── pages/        # Page components
-│   │   ├── components/   # Reusable components
 │   │   ├── hooks/        # Custom React hooks
-│   │   └── tests/        # Frontend tests
+│   │   ├── types.ts      # Shared UI types
+│   │   └── test/         # Frontend test setup
 │   ├── package.json
 │   ├── vite.config.ts
 │   ├── tsconfig.json
@@ -120,6 +118,8 @@ The backend exposes a REST API at `http://localhost:8000/api/v1/`.
 - `POST /api/v1/auth/login` – Operator login
 - `GET /api/v1/auth/me` – Resolve the current actor via JWT or `X-API-Key`
 - `GET /api/v1/health/provider` – Provider readiness status
+- `POST /api/v1/guardrails/check` – Prompt safety preflight for the operator UI
+- `GET /api/v1/audit/events` – Recent operator actions and query history
 
 ### Documents and retrieval
 - `POST /api/v1/documents/upload` – Upload and ingest a document
@@ -128,6 +128,11 @@ The backend exposes a REST API at `http://localhost:8000/api/v1/`.
 - `DELETE /api/v1/documents/{document_id}` – Remove a document and its indexed chunks
 - `POST /api/v1/query` – Ask a grounded question over indexed chunks
 - `GET /api/v1/health/retrieval` – Vector-store readiness status
+
+### Operator workspace
+- Browser login with JWT or API key
+- Document registry, upload progress, and delete actions
+- Guardrail preview, session memory, citations, and audit history
 
 ## Design Principles
 
