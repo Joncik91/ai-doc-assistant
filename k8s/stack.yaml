@@ -30,7 +30,7 @@ type: Opaque
 stringData:
   LLM_API_KEY: replace-me
   SECRET_KEY: replace-me
-  BOOTSTRAP_ADMIN_PASSWORD: admin
+  BOOTSTRAP_ADMIN_PASSWORD: replace-me-with-secure-password
   BOOTSTRAP_API_KEY: replace-me
 ---
 apiVersion: apps/v1
@@ -108,7 +108,7 @@ spec:
           ports:
             - containerPort: 5173
           env:
-            - name: VITE_API_URL
+            - name: VITE_API_PROXY_TARGET
               value: http://backend:8000
           readinessProbe:
             httpGet:

@@ -50,6 +50,11 @@ npm install
 npm run dev
 ```
 
+The frontend uses relative `/api/...` requests. In local development, Vite
+proxies them to `http://localhost:8000` by default. In containerized runtimes,
+the frontend dev server must set `VITE_API_PROXY_TARGET` to the backend
+service address.
+
 ## Project Structure
 
 ```
