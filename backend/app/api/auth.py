@@ -19,6 +19,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
+def _record_failed_login(username: str, reason: str) -> None:
+    create_audit_event(
+        actor=username,
+        auth_method="jwt",
+        action="auth.login_failed",
+        resource_type="session",
+        outcome="failed",
+        details={"reason": reason},
+    )
+
+
 @router.post("/login", response_model=Token, status_code=200)
 async def login(credentials: OperatorCredentials) -> Token:
     """
@@ -29,6 +40,7 @@ async def login(credentials: OperatorCredentials) -> Token:
     # Check if operator exists
     if not operator_exists(credentials.username):
         logger.warning(f"Login attempt for non-existent operator: {credentials.username}")
+        _record_failed_login(credentials.username, "unknown_username")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
@@ -38,6 +50,7 @@ async def login(credentials: OperatorCredentials) -> Token:
     password_hash = get_operator_password_hash(credentials.username)
     if not password_hash or not verify_password(credentials.password, password_hash):
         logger.warning(f"Failed login attempt for operator: {credentials.username}")
+        _record_failed_login(credentials.username, "invalid_password")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",

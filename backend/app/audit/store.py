@@ -48,6 +48,7 @@ def create_audit_event(
     initialize_database()
     event_id = new_id("audit")
     timestamp = _now()
+    payload_details = details or {}
     with connect() as connection:
         connection.execute(
             """
@@ -64,16 +65,21 @@ def create_audit_event(
                 resource_type,
                 resource_id,
                 outcome,
-                dumps(details or {}),
+                dumps(payload_details),
                 timestamp,
             ),
         )
-    with connect() as connection:
-        row = connection.execute(
-            "SELECT * FROM audit_events WHERE id = ?",
-            (event_id,),
-        ).fetchone()
-    return _row_to_event(row)
+    return AuditEventRecord(
+        id=event_id,
+        actor=actor,
+        auth_method=auth_method,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        outcome=outcome,
+        details=payload_details,
+        created_at=timestamp,
+    )
 
 
 def list_audit_events(limit: int = 50) -> list[AuditEventRecord]:

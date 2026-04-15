@@ -65,6 +65,22 @@ def test_blocked_query_is_recorded_in_audit_log() -> None:
     assert events[0]["outcome"] == "blocked"
 
 
+def test_failed_login_is_recorded_in_audit_log() -> None:
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"username": "admin", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 401
+
+    audit_response = client.get("/api/v1/audit/events", headers=_auth_headers())
+    assert audit_response.status_code == 200
+    events = audit_response.json()["events"]
+    assert events[0]["action"] == "auth.login_failed"
+    assert events[0]["outcome"] == "failed"
+    assert events[0]["details"]["reason"] == "invalid_password"
+
+
 def test_rate_limit_applies_to_queries(monkeypatch) -> None:
     from app.config import get_settings
     from app.retrieval import generator as generator_module
