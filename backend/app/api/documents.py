@@ -16,6 +16,7 @@ from app.models.document import (
     DocumentRecord,
     DocumentUploadResponse,
 )
+from app.observability.metrics import record_document_operation
 from app.retrieval.store import remove_document as remove_document_vectors
 from app.storage.documents import delete_document, get_document, list_documents
 
@@ -78,6 +79,10 @@ async def upload_document(
             "chunks_created": chunk_count,
         },
     )
+    record_document_operation(
+        operation="upload",
+        outcome="created" if created else "duplicate",
+    )
     return DocumentUploadResponse(
         document=document,
         created=created,
@@ -133,4 +138,5 @@ async def remove_document(
         outcome="success",
         details={},
     )
+    record_document_operation(operation="delete", outcome="success")
     return DocumentDeleteResponse(document_id=document_id, deleted=True)

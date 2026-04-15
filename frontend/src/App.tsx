@@ -12,6 +12,7 @@ import {
   getRetrievalHealth,
   loginWithPassword,
   queryDocuments,
+  getRuntimeStats,
   uploadDocument,
 } from './api/client'
 import type {
@@ -24,6 +25,7 @@ import type {
   GuardrailCheckResponse,
   HealthResponse,
   QueryResponse,
+  RuntimeStats,
 } from './types'
 
 type Panel = 'overview' | 'documents' | 'chat' | 'audit'
@@ -65,6 +67,21 @@ function formatTimestamp(value: string) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value))
+}
+
+function formatDuration(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds))
+  const hours = Math.floor(safeSeconds / 3600)
+  const minutes = Math.floor((safeSeconds % 3600) / 60)
+  const remainingSeconds = safeSeconds % 60
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${remainingSeconds}s`
+  }
+  return `${remainingSeconds}s`
 }
 
 function safeDetailValue(value: unknown) {
@@ -116,6 +133,7 @@ function App() {
   const [auditEvents, setAuditEvents] = useState<AuditEventRecord[]>([])
   const [retrievalHealth, setRetrievalHealth] = useState<HealthResponse | null>(null)
   const [providerHealth, setProviderHealth] = useState<HealthResponse | null>(null)
+  const [runtimeStats, setRuntimeStats] = useState<RuntimeStats | null>(null)
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -168,12 +186,14 @@ function App() {
     setWorkspaceLoading(true)
     setWorkspaceError(null)
 
-    const [documentsResult, auditResult, retrievalResult, providerResult] = await Promise.allSettled([
-      getDocuments(nextSession),
-      getAuditEvents(nextSession),
-      getRetrievalHealth(),
-      getProviderHealth(),
-    ])
+    const [documentsResult, auditResult, retrievalResult, providerResult, runtimeResult] =
+      await Promise.allSettled([
+        getDocuments(nextSession),
+        getAuditEvents(nextSession),
+        getRetrievalHealth(),
+        getProviderHealth(),
+        getRuntimeStats(nextSession),
+      ])
 
     if (documentsResult.status === 'fulfilled') {
       setDocuments(documentsResult.value)
@@ -197,6 +217,12 @@ function App() {
       setProviderHealth(null)
     }
 
+    if (runtimeResult.status === 'fulfilled') {
+      setRuntimeStats(runtimeResult.value)
+    } else {
+      setRuntimeStats(null)
+    }
+
     setWorkspaceLoading(false)
   }, [])
 
@@ -210,6 +236,7 @@ function App() {
         setAuditEvents([])
         setRetrievalHealth(null)
         setProviderHealth(null)
+        setRuntimeStats(null)
         setChatTurns([])
         return
       }
@@ -321,6 +348,7 @@ function App() {
     setAuditEvents([])
     setRetrievalHealth(null)
     setProviderHealth(null)
+    setRuntimeStats(null)
     setChatTurns([])
     setQuestion('')
     setGuardrailPreview(null)
@@ -642,6 +670,21 @@ function App() {
                   title="Chunks"
                   value={documentStats.indexedChunks}
                   note={`${documentStats.duplicates} duplicates`}
+                />
+                <StatCard
+                  title="Runtime"
+                  value={runtimeStats ? formatDuration(runtimeStats.uptime_seconds) : 'unknown'}
+                  note={runtimeStats ? `since ${formatTimestamp(runtimeStats.started_at)}` : 'waiting for stats'}
+                />
+                <StatCard
+                  title="Queries"
+                  value={runtimeStats?.query_total ?? 0}
+                  note={`${runtimeStats?.audit_events_total ?? 0} audit events`}
+                />
+                <StatCard
+                  title="Guardrails"
+                  value={runtimeStats?.blocked_queries_total ?? 0}
+                  note={`${runtimeStats?.failed_logins_total ?? 0} login failures`}
                 />
                 <StatCard
                   title="Retrieval"

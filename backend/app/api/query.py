@@ -9,6 +9,7 @@ from app.audit.store import create_audit_event
 from app.guardrails.filter import evaluate_question
 from app.guardrails.rate_limit import enforce_rate_limit
 from app.models.query import QueryRequest
+from app.observability.metrics import record_query_decision
 from app.retrieval.service import answer_question
 from app.retrieval.generator import QueryResponse
 
@@ -36,6 +37,7 @@ async def query_documents(
                 "blockers": assessment.blockers,
             },
         )
+        record_query_decision(outcome="blocked")
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=assessment.model_dump(),
@@ -55,4 +57,5 @@ async def query_documents(
             "sources": [citation.source for citation in response.citations],
         },
     )
+    record_query_decision(outcome="success")
     return response

@@ -1,36 +1,61 @@
 """FastAPI application entry point."""
 
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
 import logging
 
-from app.config import get_settings
-from app.api.auth import router as auth_router
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, PlainTextResponse
+
 from app.api.audit import router as audit_router
+from app.api.auth import router as auth_router
+from app.api.documents import router as documents_router
 from app.api.guardrails import router as guardrails_router
 from app.api.health import router as health_router
-from app.api.documents import router as documents_router
 from app.api.query import router as query_router
+from app.api.stats import router as stats_router
 from app.auth.operators import bootstrap_operators
+from app.config import get_settings
+from app.observability.logging import configure_logging
+from app.observability.metrics import initialize_metrics, metrics_content_type, render_metrics
+from app.observability.middleware import ObservabilityMiddleware
+from app.observability.stats import APP_STARTED_AT, collect_runtime_stats
 from app.storage.database import initialize_database
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+configure_logging()
 logger = logging.getLogger(__name__)
-
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Bootstrap local runtime state for the application."""
+    logger.info(
+        "startup",
+        extra={
+            "app_name": settings.app_name,
+            "version": settings.app_version,
+            "llm_provider": settings.llm_provider,
+            "debug": settings.debug,
+        },
+    )
+    initialize_database()
+    bootstrap_operators()
+    initialize_metrics(settings.app_name, settings.app_version, APP_STARTED_AT)
+    logger.info("bootstrap_complete", extra={"component": "auth"})
+    yield
+    logger.info("shutdown", extra={"app_name": settings.app_name})
+
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     debug=settings.debug,
+    lifespan=lifespan,
 )
 
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -38,10 +63,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(ObservabilityMiddleware)
 
-# Include routers
 app.include_router(auth_router)
 app.include_router(audit_router)
+app.include_router(stats_router)
 app.include_router(guardrails_router)
 app.include_router(health_router)
 app.include_router(documents_router)
@@ -79,30 +105,19 @@ async def config_info():
 async def provider_health():
     """Check LLM provider health and status."""
     from app.llm.factory import health_check
-    
+
     status = await health_check()
     return JSONResponse(
         status_code=200 if status.get("healthy") else 503,
         content=status,
     )
 
-@app.on_event("startup")
-async def startup_event():
-    """Application startup event."""
-    logger.info(f"Starting {settings.app_name} v{settings.app_version}")
-    logger.info(f"LLM Provider: {settings.llm_provider}")
-    logger.info(f"Debug mode: {settings.debug}")
-    
-    initialize_database()
-    # Bootstrap operators
-    bootstrap_operators()
-    logger.info("Bootstrap operators initialized")
 
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Application shutdown event."""
-    logger.info(f"Shutting down {settings.app_name}")
+@app.get("/metrics")
+async def metrics() -> PlainTextResponse:
+    """Expose Prometheus metrics for the runtime."""
+    collect_runtime_stats()
+    return PlainTextResponse(render_metrics(), media_type=metrics_content_type())
 
 
 if __name__ == "__main__":

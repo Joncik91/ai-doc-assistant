@@ -99,6 +99,24 @@ export interface HealthResponse {
   error?: string
 }
 
+export interface RuntimeStats {
+  generated_at: string
+  started_at: string
+  uptime_seconds: number
+  documents_total: number
+  documents_ready: number
+  indexed_documents: number
+  chunks_total: number
+  duplicate_documents: number
+  ingestion_events_total: number
+  audit_events_total: number
+  query_total: number
+  blocked_queries_total: number
+  failed_logins_total: number
+  distinct_actors: number
+  last_activity_at: string | null
+}
+
 export interface TokenResponse {
   access_token: string
   token_type: string

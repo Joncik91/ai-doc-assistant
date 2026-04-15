@@ -14,6 +14,7 @@ vi.mock('./api/client', () => ({
   getDocuments: vi.fn(),
   getProviderHealth: vi.fn(),
   getRetrievalHealth: vi.fn(),
+  getRuntimeStats: vi.fn(),
   loginWithPassword: vi.fn(),
   queryDocuments: vi.fn(),
   uploadDocument: vi.fn(),
@@ -79,6 +80,23 @@ describe('App', () => {
       provider: 'deepseek',
       model: 'deepseek-chat',
     })
+    mockedApi.getRuntimeStats.mockResolvedValue({
+      generated_at: '2026-04-15T18:00:00Z',
+      started_at: '2026-04-15T17:00:00Z',
+      uptime_seconds: 3720,
+      documents_total: 1,
+      documents_ready: 1,
+      indexed_documents: 1,
+      chunks_total: 2,
+      duplicate_documents: 0,
+      ingestion_events_total: 1,
+      audit_events_total: 1,
+      query_total: 0,
+      blocked_queries_total: 0,
+      failed_logins_total: 0,
+      distinct_actors: 1,
+      last_activity_at: '2026-04-15T18:00:00Z',
+    })
   }
 
   async function signInWithPassword() {
@@ -100,6 +118,7 @@ describe('App', () => {
     await screen.findByRole('button', { name: /Open workspace/i })
     await signInWithPassword()
 
+    expect(screen.getByText('1h 2m')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Documents/i }))
 
     await waitFor(() => {

@@ -121,10 +121,13 @@ def initialize_database() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
             CREATE INDEX IF NOT EXISTS idx_documents_index_status ON documents(index_status);
+            CREATE INDEX IF NOT EXISTS idx_documents_duplicate_of ON documents(duplicate_of);
             CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON document_chunks(document_id);
             CREATE INDEX IF NOT EXISTS idx_events_document_id ON ingestion_events(document_id);
             CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_audit_events_actor ON audit_events(actor, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_audit_events_action ON audit_events(action, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_ingestion_events_type ON ingestion_events(event_type, created_at DESC);
             """
         )
 

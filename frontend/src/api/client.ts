@@ -10,6 +10,7 @@ import type {
   GuardrailCheckResponse,
   HealthResponse,
   QueryResponse,
+  RuntimeStats,
   TokenResponse,
 } from '../types'
 
@@ -133,5 +134,12 @@ export async function getRetrievalHealth() {
 
 export async function getProviderHealth() {
   const { data } = await api.get<HealthResponse>('/health/provider')
+  return data
+}
+
+export async function getRuntimeStats(session: AuthSession) {
+  const { data } = await api.get<RuntimeStats>('/stats', {
+    headers: authHeaders(session),
+  })
   return data
 }

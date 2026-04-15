@@ -14,12 +14,14 @@ from app.auth.credentials import (
 from app.api.dependencies import AuthContext, get_auth_context
 from app.audit.store import create_audit_event
 from app.auth.operators import get_operator_password_hash, operator_exists
+from app.observability.metrics import record_auth_login
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 def _record_failed_login(username: str, reason: str) -> None:
+    record_auth_login(outcome="failed", auth_method="jwt")
     create_audit_event(
         actor=username,
         auth_method="jwt",
@@ -68,6 +70,7 @@ async def login(credentials: OperatorCredentials) -> Token:
         outcome="success",
         details={"scopes": ["read", "write", "admin"]},
     )
+    record_auth_login(outcome="success", auth_method="jwt")
     logger.info(f"Operator logged in: {credentials.username}")
     return Token(
         access_token=access_token,
