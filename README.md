@@ -1,0 +1,164 @@
+# AI Document Assistant
+
+A portfolio-grade AI document assistant showcasing safe, disciplined software engineering practices.
+
+## Quick Start
+
+### Prerequisites
+- Docker and Docker Compose
+- Or: Python 3.11+, Node.js 20+
+
+### With Docker Compose
+
+```bash
+# Set up environment (copy example)
+cp .env.example .env
+
+# Edit .env to add your DeepSeek API key:
+# LLM_API_KEY=your-deepseek-api-key-here
+
+# Start all services
+docker compose up --build
+
+# Access the app:
+# Frontend: http://localhost:5173
+# Backend API: http://localhost:8000
+# API Docs: http://localhost:8000/docs
+# Chroma: http://localhost:8001
+```
+
+### Local Development (without Docker)
+
+**Backend:**
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+# Create data directory
+mkdir -p ../data
+
+# Start backend
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**Frontend (in another terminal):**
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## Project Structure
+
+```
+.
+├── backend/               # FastAPI application
+│   ├── app/
+│   │   ├── main.py       # Entry point
+│   │   ├── config.py     # Configuration management
+│   │   ├── auth/         # Authentication and authorization
+│   │   ├── llm/          # LLM provider abstraction
+│   │   ├── retrieval/    # Vector search and retrieval
+│   │   ├── ingestion/    # Document processing pipeline
+│   │   ├── storage/      # Metadata and document store
+│   │   ├── guardrails/   # Safety and filtering
+│   │   ├── audit/        # Query history and logging
+│   │   ├── observability/# Metrics and tracing
+│   │   ├── api/          # API routes
+│   │   └── models/       # Data schemas
+│   ├── tests/            # Backend tests
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/             # React + TypeScript application
+│   ├── src/
+│   │   ├── main.tsx
+│   │   ├── App.tsx
+│   │   ├── api/          # API client
+│   │   ├── features/     # Feature modules
+│   │   ├── pages/        # Page components
+│   │   ├── components/   # Reusable components
+│   │   ├── hooks/        # Custom React hooks
+│   │   └── tests/        # Frontend tests
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tsconfig.json
+│   └── Dockerfile
+├── demo-corpus/          # Sample documents for demos
+├── k8s/                  # Kubernetes manifests (portfolio artifact)
+├── docker-compose.yml    # Local development runtime
+├── PRD.md               # Product requirements document
+├── PRODUCT_BRIEF.md     # Original brief
+└── README.md            # This file
+```
+
+## Configuration
+
+All configuration is environment-driven and centralized in `backend/app/config.py`.
+
+Key variables (see `.env.example`):
+
+- `DEBUG` – Enable debug mode
+- `LLM_PROVIDER` – LLM provider (deepseek)
+- `LLM_API_KEY` – API key for the provider
+- `LLM_MODEL` – Model name
+- `CHROMA_PERSIST_DIRECTORY` – Vector store location
+- `DATABASE_URL` – SQLite database path
+- `SECRET_KEY` – JWT secret (change in production)
+
+## API
+
+The backend exposes a REST API at `http://localhost:8000/api/v1/`.
+
+### Health and Config
+- `GET /health` – Health check
+- `GET /api/v1/config` – Runtime configuration (non-sensitive)
+
+### Authentication
+- `POST /api/v1/auth/login` – Operator login
+- `GET /api/v1/auth/me` – Resolve the current actor via JWT or `X-API-Key`
+- `GET /api/v1/health/provider` – Provider readiness status
+
+### Sprint 1 scope note
+Document ingestion, query, and audit endpoints are planned for Sprint 2+ and are not implemented yet.
+
+## Design Principles
+
+This project demonstrates:
+- **SOLID**: Single responsibility, open/closed, Liskov substitution, interface segregation, dependency inversion
+- **DRY**: Centralized configuration, shared auth logic, reusable models
+- **SECURITY**: JWT auth, API keys, rate limiting, query validation, PII detection, structured logging
+- **YAGNI**: No multi-tenancy, no document-level ACLs, local-first retrieval, cloud-only generation
+
+## LLM Provider
+
+Currently configured for **DeepSeek** via OpenAI-compatible API.
+
+The provider is abstracted behind a contract in `backend/app/llm/` so other providers (Ollama, GPT, Claude) can be added without changing routes or the UI.
+
+## Vector Search
+
+Chroma is wired into the local runtime in Sprint 1, but document embeddings and retrieval endpoints are scheduled for Sprint 2.
+
+## Testing
+
+**Backend:**
+```bash
+cd backend
+pytest
+```
+
+**Frontend:**
+```bash
+cd frontend
+npm run test
+```
+
+## Deployment
+
+Sprint 1 supports local backend/frontend startup plus Docker runtime scaffolding. Deployment docs and Kubernetes assets are planned for a later sprint.
+
+## License
+
+Built as a portfolio project.
