@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -12,10 +11,11 @@ from app.api.dependencies import AuthContext, get_auth_context
 from app.audit.store import create_audit_event
 from app.guardrails.filter import evaluate_question
 from app.guardrails.rate_limit import enforce_rate_limit
+from app.llm.factory import get_provider
 from app.models.query import QueryRequest
 from app.observability.metrics import record_query_decision
-from app.retrieval.service import answer_question
-from app.retrieval.generator import QueryResponse
+from app.retrieval.generator import PreparedQueryGeneration, QueryResponse, build_query_response
+from app.retrieval.service import answer_question, prepare_question_answer
 
 router = APIRouter(prefix="/api/v1/query", tags=["query"])
 
@@ -40,7 +40,7 @@ def _audit_query_success(payload: QueryRequest, auth_context: AuthContext, respo
     )
 
 
-async def _run_query(payload: QueryRequest, auth_context: AuthContext) -> QueryResponse:
+def _evaluate_query_request(payload: QueryRequest, auth_context: AuthContext) -> None:
     enforce_rate_limit(auth_context.username, "query")
     assessment = evaluate_question(payload.question, payload.top_k)
     if not assessment.allowed:
@@ -63,23 +63,42 @@ async def _run_query(payload: QueryRequest, auth_context: AuthContext) -> QueryR
             detail=assessment.model_dump(),
         )
 
+
+async def _run_query(payload: QueryRequest, auth_context: AuthContext) -> QueryResponse:
+    _evaluate_query_request(payload, auth_context)
+
     response = await answer_question(payload.question, payload.top_k)
     _audit_query_success(payload, auth_context, response)
     record_query_decision(outcome="success")
     return response
 
 
-async def _stream_query_response(response: QueryResponse):
-    answer = response.answer or ""
-    chunk_size = max(1, math.ceil(len(answer) / 8)) if answer else 0
+async def _stream_query_response(
+    payload: QueryRequest,
+    auth_context: AuthContext,
+    prepared: PreparedQueryGeneration,
+):
+    provider = get_provider()
 
-    if not answer:
-        yield json.dumps({"type": "delta", "delta": ""}, ensure_ascii=False).encode("utf-8") + b"\n"
-    else:
-        for start in range(0, len(answer), chunk_size):
-            chunk = answer[start : start + chunk_size]
-            yield json.dumps({"type": "delta", "delta": chunk}, ensure_ascii=False).encode("utf-8") + b"\n"
+    answer_parts: list[str] = []
+    finish_reason = "stop"
 
+    async for chunk in provider.generate_stream(prepared.request):
+        if chunk.content:
+            answer_parts.append(chunk.content)
+            yield json.dumps({"type": "delta", "delta": chunk.content}, ensure_ascii=False).encode("utf-8") + b"\n"
+
+        if chunk.finish_reason:
+            finish_reason = chunk.finish_reason
+
+    response = build_query_response(
+        answer="".join(answer_parts),
+        finish_reason=finish_reason,
+        citations=prepared.citations,
+        has_context=prepared.has_context,
+    )
+    _audit_query_success(payload, auth_context, response)
+    record_query_decision(outcome="success")
     yield json.dumps({"type": "final", "response": response.model_dump()}, ensure_ascii=False).encode("utf-8") + b"\n"
 
 
@@ -96,9 +115,10 @@ async def stream_query_documents(
     payload: QueryRequest,
     auth_context: AuthContext = Depends(get_auth_context),
 ) -> StreamingResponse:
-    response = await _run_query(payload, auth_context)
+    _evaluate_query_request(payload, auth_context)
+    prepared = prepare_question_answer(payload.question, payload.top_k)
     return StreamingResponse(
-        _stream_query_response(response),
+        _stream_query_response(payload, auth_context, prepared),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

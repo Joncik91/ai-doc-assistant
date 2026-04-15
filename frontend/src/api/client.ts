@@ -159,7 +159,14 @@ export async function streamQueryDocuments(
       return
     }
 
-    const event = JSON.parse(line) as QueryStreamEvent
+    let event: QueryStreamEvent
+    try {
+      event = JSON.parse(line) as QueryStreamEvent
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'parse error'
+      throw new Error(`Invalid streaming response: ${message}`)
+    }
+
     if (event.type === 'delta') {
       onDelta?.(event.delta)
       return

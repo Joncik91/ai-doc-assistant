@@ -1,6 +1,7 @@
 """LLM provider abstract contract."""
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -54,12 +55,26 @@ class GenerationResponse(BaseModel):
     )
 
 
+class GenerationChunk(BaseModel):
+    """One streamed generation chunk."""
+
+    content: str = ""
+    finish_reason: str | None = None
+    model: str | None = None
+    usage: dict = Field(default_factory=dict)
+
+
 class LLMProvider(ABC):
     """Abstract base class for LLM providers."""
 
     @abstractmethod
     async def generate(self, request: GenerationRequest) -> GenerationResponse:
         """Generate text based on the request."""
+        pass
+
+    @abstractmethod
+    async def generate_stream(self, request: GenerationRequest) -> AsyncIterator[GenerationChunk]:
+        """Generate streamed text chunks based on the request."""
         pass
 
     @abstractmethod

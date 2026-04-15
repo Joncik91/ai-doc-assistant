@@ -27,12 +27,19 @@ the Vite dev-server proxy. Local development defaults that proxy to
 Keep the following values in `.env` or the target deployment system:
 
 - `LLM_API_KEY`
+- `LLM_PROVIDER`
+- `LLM_MODEL`
 - `SECRET_KEY`
 - `BOOTSTRAP_ADMIN_PASSWORD`
 - `BOOTSTRAP_API_KEY`
 
 The application does not ship hardcoded fallback credentials; these values must
 be provided explicitly for local runs and deployments.
+
+Provider notes:
+
+- `deepseek` defaults `LLM_BASE_URL` to `https://api.deepseek.com/v1` and requires `LLM_API_KEY`
+- `ollama` defaults `LLM_BASE_URL` to `http://localhost:11434` and does not require `LLM_API_KEY`
 
 ## Kubernetes
 

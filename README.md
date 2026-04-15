@@ -111,7 +111,8 @@ Key variables (see `.env.example`):
 
 - `DEBUG` – Enable debug mode
 - `LLM_PROVIDER` – LLM provider (deepseek or ollama)
-- `LLM_API_KEY` – API key for the provider
+- `LLM_API_KEY` – API key for the provider (not required for ollama)
+- `LLM_BASE_URL` – Optional provider endpoint override; defaults to `https://api.deepseek.com/v1` for DeepSeek and `http://localhost:11434` for Ollama
 - `LLM_MODEL` – Model name for the selected provider
 - `CHROMA_PERSIST_DIRECTORY` – Vector store location
 - `DOCUMENT_STORAGE_DIRECTORY` – Persisted upload location
@@ -167,6 +168,9 @@ This project demonstrates:
 Currently configured for **DeepSeek** via OpenAI-compatible API.
 
 The provider is abstracted behind a contract in `backend/app/llm/`, and the repo now also ships an **Ollama** adapter behind the same interface so provider selection stays environment-driven.
+
+- **DeepSeek:** set `LLM_PROVIDER=deepseek`, provide `LLM_API_KEY`, and optionally override `LLM_BASE_URL`
+- **Ollama:** set `LLM_PROVIDER=ollama`, set `LLM_MODEL` to a local model such as `llama3.1`, and leave `LLM_BASE_URL` unset unless your Ollama server is not on `http://localhost:11434`
 
 ## Vector Search
 

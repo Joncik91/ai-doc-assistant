@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from fastapi.testclient import TestClient
@@ -78,23 +79,28 @@ def test_query_returns_grounded_answer(monkeypatch) -> None:
 
 
 def test_query_streams_incremental_answer(monkeypatch) -> None:
-    from app.retrieval import generator as generator_module
+    from app.api import query as query_module
 
-    class FakeProvider:
+    class FakeStreamingProvider:
         async def generate(self, request):
-            return GenerationResponse(
-                content=(
-                    "Remote work is allowed with manager approval and a weekly check-in to confirm progress."
-                ),
-                finish_reason="stop",
-                model="mock",
-                usage={},
-            )
+            raise AssertionError("stream endpoint should not call generate()")
 
         async def health_check(self) -> bool:
             return True
 
-    monkeypatch.setattr(generator_module, "get_provider", lambda: FakeProvider())
+        async def generate_stream(self, request):
+            yield type("Chunk", (), {"content": "Remote work is ", "finish_reason": None})()
+            await asyncio.sleep(0)
+            yield type(
+                "Chunk",
+                (),
+                {
+                    "content": "allowed with manager approval and a weekly check-in to confirm progress.",
+                    "finish_reason": "stop",
+                },
+            )()
+
+    monkeypatch.setattr(query_module, "get_provider", lambda: FakeStreamingProvider())
 
     upload_response = client.post(
         "/api/v1/documents/upload",

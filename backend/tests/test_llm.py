@@ -1,7 +1,7 @@
 """Test LLM provider contract."""
 
 import pytest
-from app.llm.provider import LLMProvider, GenerationRequest, GenerationResponse, Message
+from app.llm.provider import GenerationChunk, LLMProvider, GenerationRequest, GenerationResponse, Message
 from app.llm.deepseek import DeepSeekProvider
 from app.llm.factory import get_provider
 from app.llm.ollama import OllamaProvider
@@ -43,6 +43,20 @@ def test_generation_response_structure():
     assert response.content == "Test response"
     assert response.finish_reason == "stop"
     assert response.usage["prompt_tokens"] == 10
+
+
+def test_generation_chunk_structure():
+    """Test generation chunk structure."""
+    chunk = GenerationChunk(
+        content="partial",
+        finish_reason=None,
+        model="test-model",
+        usage={"completion_tokens": 2},
+    )
+
+    assert chunk.content == "partial"
+    assert chunk.finish_reason is None
+    assert chunk.usage["completion_tokens"] == 2
 
 
 def test_get_provider():
@@ -123,6 +137,58 @@ async def test_ollama_provider_generate(monkeypatch):
 
     assert await provider.health_check() is True
     assert captured["health_url"] == "http://localhost:11434/api/tags"
+
+
+@pytest.mark.asyncio
+async def test_ollama_provider_generate_stream(monkeypatch):
+    """Test Ollama streaming response handling."""
+
+    class FakeResponse:
+        def __init__(self):
+            self.status_code = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def aiter_lines(self):
+            for line in [
+                '{"message":{"content":"Hello "},"done":false}',
+                '{"message":{"content":"from Ollama"},"done":false}',
+                '{"message":{"content":""},"done":true,"done_reason":"stop","prompt_eval_count":12,"eval_count":7}',
+            ]:
+                yield line
+
+        async def aread(self):
+            return b""
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        def stream(self, method, url, json=None):
+            return FakeResponse()
+
+    monkeypatch.setattr("app.llm.ollama.httpx.AsyncClient", FakeClient)
+
+    provider = OllamaProvider(base_url="http://localhost:11434", model="llama3.1")
+    chunks = [
+        chunk
+        async for chunk in provider.generate_stream(
+            GenerationRequest(messages=[Message(role="user", content="Hi")])
+        )
+    ]
+
+    assert [chunk.content for chunk in chunks if chunk.content] == ["Hello ", "from Ollama"]
+    assert chunks[-1].finish_reason == "stop"
 
 
 @pytest.mark.asyncio

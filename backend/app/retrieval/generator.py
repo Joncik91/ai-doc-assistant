@@ -1,5 +1,6 @@
 """Query generation service using the LLM provider."""
 
+from dataclasses import dataclass
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -46,6 +47,89 @@ class QueryResponse(BaseModel):
     )
 
 
+@dataclass(slots=True)
+class PreparedQueryGeneration:
+    """Prepared generation request plus citation metadata."""
+
+    request: GenerationRequest
+    citations: list[Citation]
+    has_context: bool
+
+
+def prepare_query_generation(
+    query: str,
+    context_chunks: list[dict],
+    system_prompt: Optional[str] = None,
+) -> PreparedQueryGeneration:
+    """Build the provider request and response metadata for a query."""
+    context_text = "\n\n".join(
+        f"[Source: {chunk.get('source', 'unknown')}]\n{chunk.get('text', '')}"
+        for chunk in context_chunks
+    )
+
+    if not system_prompt:
+        system_prompt = """You are a helpful document analysis assistant.
+Answer questions based only on the provided document context.
+If the context doesn't contain relevant information, say so clearly.
+Be concise and accurate."""
+
+    messages = [
+        Message(role="system", content=system_prompt),
+        Message(role="user", content=f"Context:\n{context_text}\n\nQuestion: {query}"),
+    ]
+
+    request = GenerationRequest(
+        messages=messages,
+        model=None,
+        temperature=0.5,
+        max_tokens=2000,
+    )
+
+    citations = [
+        Citation(
+            source=chunk.get("source", "unknown"),
+            page=chunk.get("page"),
+            chunk_id=chunk.get("id"),
+            relevance_score=chunk.get("relevance_score", 0.0),
+            excerpt=chunk.get("text", "")[:400] if chunk.get("text") else None,
+        )
+        for chunk in context_chunks
+    ]
+
+    return PreparedQueryGeneration(
+        request=request,
+        citations=citations,
+        has_context=bool(context_chunks),
+    )
+
+
+def build_query_response(
+    *,
+    answer: str,
+    finish_reason: str,
+    citations: list[Citation],
+    has_context: bool,
+) -> QueryResponse:
+    """Build the final query response from generated text and retrieval metadata."""
+    disclaimer = None
+    confidence = 0.8
+
+    if not has_context:
+        disclaimer = "This answer was generated without document context and may not be accurate."
+        confidence = 0.3
+    elif finish_reason == "length":
+        disclaimer = "Answer was truncated due to length limit."
+        confidence = 0.6
+
+    return QueryResponse(
+        answer=answer,
+        citations=citations,
+        confidence=confidence,
+        finish_reason=finish_reason,
+        disclaimer=disclaimer,
+    )
+
+
 async def generate_answer(
     query: str,
     context_chunks: list[dict],
@@ -62,61 +146,11 @@ async def generate_answer(
     Returns: QueryResponse with answer and citations
     """
     provider = get_provider()
-
-    # Build context string from chunks
-    context_text = "\n\n".join(
-        [f"[Source: {chunk.get('source', 'unknown')}]\n{chunk.get('text', '')}" for chunk in context_chunks]
-    )
-
-    # Build system prompt
-    if not system_prompt:
-        system_prompt = """You are a helpful document analysis assistant.
-Answer questions based only on the provided document context.
-If the context doesn't contain relevant information, say so clearly.
-Be concise and accurate."""
-
-    # Build messages
-    messages = [
-        Message(role="system", content=system_prompt),
-        Message(role="user", content=f"Context:\n{context_text}\n\nQuestion: {query}"),
-    ]
-
-    # Generate
-    request = GenerationRequest(
-        messages=messages,
-        model=None,
-        temperature=0.5,
-        max_tokens=2000,
-    )
-
-    response: GenerationResponse = await provider.generate(request)
-
-    # Build citations from context
-    citations = [
-        Citation(
-            source=chunk.get("source", "unknown"),
-            page=chunk.get("page"),
-            chunk_id=chunk.get("id"),
-            relevance_score=chunk.get("relevance_score", 0.0),
-            excerpt=chunk.get("text", "")[:400] if chunk.get("text") else None,
-        )
-        for chunk in context_chunks
-    ]
-
-    # Add disclaimer if confidence is low or no context
-    disclaimer = None
-    confidence = 0.8
-    if not context_chunks:
-        disclaimer = "This answer was generated without document context and may not be accurate."
-        confidence = 0.3
-    elif response.finish_reason == "length":
-        disclaimer = "Answer was truncated due to length limit."
-        confidence = 0.6
-
-    return QueryResponse(
+    prepared = prepare_query_generation(query, context_chunks, system_prompt)
+    response: GenerationResponse = await provider.generate(prepared.request)
+    return build_query_response(
         answer=response.content,
-        citations=citations,
-        confidence=confidence,
         finish_reason=response.finish_reason,
-        disclaimer=disclaimer,
+        citations=prepared.citations,
+        has_context=prepared.has_context,
     )

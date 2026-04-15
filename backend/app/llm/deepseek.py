@@ -1,12 +1,19 @@
 """DeepSeek LLM provider implementation (OpenAI-compatible)."""
 
+import json
 import logging
+from collections.abc import AsyncIterator
 from typing import Optional
 
 import httpx
 
-from app.llm.provider import LLMProvider, GenerationRequest, GenerationResponse
 from app.config import get_settings
+from app.llm.provider import (
+    GenerationChunk,
+    GenerationRequest,
+    GenerationResponse,
+    LLMProvider,
+)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -70,19 +77,12 @@ class DeepSeekProvider(LLMProvider):
         if not self.api_key:
             raise ValueError("DeepSeek API key not configured")
 
-        messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
-
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
                     headers=self._get_headers(),
-                    json={
-                        "model": request.model or self.model,
-                        "messages": messages,
-                        "temperature": request.temperature,
-                        "max_tokens": request.max_tokens,
-                    },
+                    json=self._build_payload(request, stream=False),
                 )
 
                 if response.status_code != 200:
@@ -101,10 +101,7 @@ class DeepSeekProvider(LLMProvider):
                     content=choice.get("message", {}).get("content", ""),
                     finish_reason=choice.get("finish_reason", "stop"),
                     model=request.model or self.model,
-                    usage={
-                        "prompt_tokens": usage.get("prompt_tokens", 0),
-                        "completion_tokens": usage.get("completion_tokens", 0),
-                    },
+                    usage=self._normalize_usage(usage),
                 )
         except httpx.TimeoutException:
             logger.error("DeepSeek request timeout")
@@ -121,9 +118,77 @@ class DeepSeekProvider(LLMProvider):
                 model=request.model or self.model,
             )
 
+    async def generate_stream(self, request: GenerationRequest) -> AsyncIterator[GenerationChunk]:
+        """Generate streamed text using DeepSeek."""
+        if not self.api_key:
+            logger.error("DeepSeek streaming requested without an API key")
+            yield GenerationChunk(finish_reason="error", model=request.model or self.model)
+            return
+
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    headers=self._get_headers(),
+                    json=self._build_payload(request, stream=True),
+                ) as response:
+                    if response.status_code != 200:
+                        logger.error("DeepSeek streaming API error: %s %s", response.status_code, await response.aread())
+                        yield GenerationChunk(
+                            finish_reason="error",
+                            model=request.model or self.model,
+                        )
+                        return
+
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        if not line.startswith("data:"):
+                            continue
+
+                        payload = line.removeprefix("data:").strip()
+                        if payload == "[DONE]":
+                            break
+
+                        data = json.loads(payload)
+                        choice = data.get("choices", [{}])[0]
+                        delta = choice.get("delta", {}).get("content", "")
+                        finish_reason = choice.get("finish_reason")
+
+                        if delta or finish_reason:
+                            yield GenerationChunk(
+                                content=delta,
+                                finish_reason=finish_reason,
+                                model=request.model or self.model,
+                                usage=self._normalize_usage(data.get("usage", {})),
+                            )
+        except httpx.TimeoutException:
+            logger.error("DeepSeek streaming request timeout")
+            yield GenerationChunk(finish_reason="error", model=request.model or self.model)
+        except (httpx.HTTPError, json.JSONDecodeError) as exc:
+            logger.error("DeepSeek streaming failed: %s", exc)
+            yield GenerationChunk(finish_reason="error", model=request.model or self.model)
+
     def _get_headers(self) -> dict:
         """Get request headers for DeepSeek API."""
         return {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
+        }
+
+    def _build_payload(self, request: GenerationRequest, *, stream: bool) -> dict:
+        messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+        return {
+            "model": request.model or self.model,
+            "messages": messages,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens,
+            "stream": stream,
+        }
+
+    def _normalize_usage(self, usage: dict) -> dict:
+        return {
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
         }
