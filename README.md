@@ -120,8 +120,13 @@ The backend exposes a REST API at `http://localhost:8000/api/v1/`.
 - `GET /api/v1/auth/me` – Resolve the current actor via JWT or `X-API-Key`
 - `GET /api/v1/health/provider` – Provider readiness status
 
-### Sprint 1 scope note
-Document ingestion, query, and audit endpoints are planned for Sprint 2+ and are not implemented yet.
+### Documents and retrieval
+- `POST /api/v1/documents/upload` – Upload and ingest a document
+- `GET /api/v1/documents` – List indexed documents
+- `GET /api/v1/documents/{document_id}` – Inspect a single document
+- `DELETE /api/v1/documents/{document_id}` – Remove a document and its indexed chunks
+- `POST /api/v1/query` – Ask a grounded question over indexed chunks
+- `GET /api/v1/health/retrieval` – Vector-store readiness status
 
 ## Design Principles
 
@@ -139,7 +144,7 @@ The provider is abstracted behind a contract in `backend/app/llm/` so other prov
 
 ## Vector Search
 
-Chroma is wired into the local runtime in Sprint 1, but document embeddings and retrieval endpoints are scheduled for Sprint 2.
+Chroma is wired into the local runtime, with deterministic local embeddings and cited retrieval backed by the stored document chunks.
 
 ## Testing
 
@@ -157,7 +162,7 @@ npm run test
 
 ## Deployment
 
-Sprint 1 supports local backend/frontend startup plus Docker runtime scaffolding. Deployment docs and Kubernetes assets are planned for a later sprint.
+The current runtime supports local backend/frontend startup plus Docker runtime scaffolding. Deployment docs and Kubernetes assets are planned for a later sprint.
 
 ## Roadmap
 

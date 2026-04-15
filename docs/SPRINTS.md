@@ -18,16 +18,16 @@ This repository follows a four-sprint delivery plan. Sprint 1 is complete; later
 
 ## Sprint 2: Ingestion and grounded retrieval
 
-**Status:** Planned
+**Status:** Complete
 
 **Goal:** make documents ingestible, embeddable, retrievable, and answerable through a cited API flow.
 
-**Planned scope**
-- Document registry and ingestion status tracking
-- Duplicate detection and persisted metadata
+**Delivered**
+- Persistent document registry and ingestion status tracking
+- Duplicate detection with persisted ingestion events
 - Multi-format extraction for PDF, DOCX, TXT, and Markdown
-- Chunking and embedding into Chroma
-- Query endpoint returning grounded answers with citations
+- Chunking, local embeddings, and Chroma-backed vector storage
+- Grounded query endpoint returning answers with citations
 
 ## Sprint 3: Operator experience and guardrails
 

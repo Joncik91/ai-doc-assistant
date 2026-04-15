@@ -7,7 +7,11 @@ import logging
 
 from app.config import get_settings
 from app.api.auth import router as auth_router
+from app.api.health import router as health_router
+from app.api.documents import router as documents_router
+from app.api.query import router as query_router
 from app.auth.operators import bootstrap_operators
+from app.storage.database import initialize_database
 
 # Configure logging
 logging.basicConfig(
@@ -35,6 +39,9 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth_router)
+app.include_router(health_router)
+app.include_router(documents_router)
+app.include_router(query_router)
 
 
 @app.get("/health")
@@ -75,7 +82,6 @@ async def provider_health():
         content=status,
     )
 
-
 @app.on_event("startup")
 async def startup_event():
     """Application startup event."""
@@ -83,6 +89,7 @@ async def startup_event():
     logger.info(f"LLM Provider: {settings.llm_provider}")
     logger.info(f"Debug mode: {settings.debug}")
     
+    initialize_database()
     # Bootstrap operators
     bootstrap_operators()
     logger.info("Bootstrap operators initialized")

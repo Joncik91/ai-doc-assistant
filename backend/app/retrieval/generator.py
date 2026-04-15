@@ -14,6 +14,7 @@ class Citation(BaseModel):
     page: Optional[int] = None
     chunk_id: Optional[str] = None
     relevance_score: float = 0.0
+    excerpt: Optional[str] = None
 
 
 class QueryResponse(BaseModel):
@@ -97,6 +98,7 @@ Be concise and accurate."""
             page=chunk.get("page"),
             chunk_id=chunk.get("id"),
             relevance_score=chunk.get("relevance_score", 0.0),
+            excerpt=chunk.get("text", "")[:400] if chunk.get("text") else None,
         )
         for chunk in context_chunks
     ]

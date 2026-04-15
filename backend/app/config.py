@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # Vector store (ChromaDB)
     chroma_persist_directory: str = "./data/chroma"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    document_storage_directory: str = "./data/documents"
 
     # Database
     database_url: str = "sqlite:///./data/app.db"
