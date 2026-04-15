@@ -1,0 +1,181 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-doc-assistant
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-doc-assistant-config
+  namespace: ai-doc-assistant
+data:
+  DEBUG: "false"
+  HOST: "0.0.0.0"
+  PORT: "8000"
+  LLM_PROVIDER: "deepseek"
+  LLM_BASE_URL: "https://api.deepseek.com/v1"
+  LLM_MODEL: "deepseek-chat"
+  LLM_TEMPERATURE: "0.5"
+  LLM_MAX_TOKENS: "2000"
+  CHROMA_PERSIST_DIRECTORY: "/data/chroma"
+  DOCUMENT_STORAGE_DIRECTORY: "/data/documents"
+  DATABASE_URL: "sqlite:////data/app.db"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ai-doc-assistant-secrets
+  namespace: ai-doc-assistant
+type: Opaque
+stringData:
+  LLM_API_KEY: replace-me
+  SECRET_KEY: replace-me
+  BOOTSTRAP_ADMIN_PASSWORD: admin
+  BOOTSTRAP_API_KEY: replace-me
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: ai-doc-assistant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: ai-doc-assistant-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: ai-doc-assistant-config
+            - secretRef:
+                name: ai-doc-assistant-secrets
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: ai-doc-assistant
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: ai-doc-assistant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ai-doc-assistant-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5173
+          env:
+            - name: VITE_API_URL
+              value: http://backend:8000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5173
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 5173
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: ai-doc-assistant
+spec:
+  selector:
+    app: frontend
+  ports:
+    - port: 5173
+      targetPort: 5173
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chroma
+  namespace: ai-doc-assistant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chroma
+  template:
+    metadata:
+      labels:
+        app: chroma
+    spec:
+      containers:
+        - name: chroma
+          image: ghcr.io/chroma-core/chroma:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: IS_PERSISTENT
+              value: "true"
+          volumeMounts:
+            - name: chroma-data
+              mountPath: /chroma/data
+          readinessProbe:
+            tcpSocket:
+              port: 8000
+          livenessProbe:
+            tcpSocket:
+              port: 8000
+      volumes:
+        - name: chroma-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chroma
+  namespace: ai-doc-assistant
+spec:
+  selector:
+    app: chroma
+  ports:
+    - port: 8000
+      targetPort: 8000

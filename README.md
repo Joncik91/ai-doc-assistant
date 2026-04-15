@@ -84,6 +84,7 @@ npm run dev
 │   └── Dockerfile
 ├── demo-corpus/          # Sample documents for demos
 ├── k8s/                  # Kubernetes manifests (portfolio artifact)
+├── docs/                 # Architecture, deployment, and evaluation notes
 ├── docker-compose.yml    # Local development runtime
 ├── PRD.md               # Product requirements document
 ├── PRODUCT_BRIEF.md     # Original brief
@@ -101,6 +102,7 @@ Key variables (see `.env.example`):
 - `LLM_API_KEY` – API key for the provider
 - `LLM_MODEL` – Model name
 - `CHROMA_PERSIST_DIRECTORY` – Vector store location
+- `DOCUMENT_STORAGE_DIRECTORY` – Persisted upload location
 - `MAX_UPLOAD_SIZE_BYTES` – Maximum allowed upload size
 - `DATABASE_URL` – SQLite database path
 - `SECRET_KEY` – JWT secret (change in production)
@@ -119,6 +121,8 @@ The backend exposes a REST API at `http://localhost:8000/api/v1/`.
 - `GET /api/v1/health/provider` – Provider readiness status
 - `POST /api/v1/guardrails/check` – Prompt safety preflight for the operator UI
 - `GET /api/v1/audit/events` – Recent operator actions and query history
+- `GET /api/v1/stats` – Runtime snapshot for the operator dashboard
+- `GET /metrics` – Prometheus-compatible metrics output
 
 ### Documents and retrieval
 - `POST /api/v1/documents/upload` – Upload and ingest a document
@@ -132,6 +136,7 @@ The backend exposes a REST API at `http://localhost:8000/api/v1/`.
 - Browser login with JWT or API key
 - Document registry, upload progress, and delete actions
 - Guardrail preview, session memory, citations, and audit history
+- Runtime stats, health cards, and release-readiness signals
 
 ## Design Principles
 
@@ -167,7 +172,14 @@ npm run test
 
 ## Deployment
 
-The current runtime supports local backend/frontend startup plus Docker runtime scaffolding. Deployment docs and Kubernetes assets are planned for a later sprint.
+The current runtime supports Docker Compose as the primary path, plus
+illustrative Kubernetes manifests.
+
+See:
+
+- `docs/deployment.md`
+- `docs/architecture.md`
+- `docs/evaluation.md`
 
 ## Roadmap
 

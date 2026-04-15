@@ -20,6 +20,7 @@ services:
       - LLM_TEMPERATURE=0.5
       - LLM_MAX_TOKENS=2000
       - CHROMA_PERSIST_DIRECTORY=/data/chroma
+      - DOCUMENT_STORAGE_DIRECTORY=/data/documents
       - DATABASE_URL=sqlite:////data/app.db
       - BOOTSTRAP_ADMIN_USERNAME=${BOOTSTRAP_ADMIN_USERNAME:-admin}
       - BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD:-admin}

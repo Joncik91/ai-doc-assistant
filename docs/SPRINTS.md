@@ -44,12 +44,18 @@ This repository follows a four-sprint delivery plan. Sprint 1 is complete; later
 
 ## Sprint 4: Production-demo polish
 
-**Status:** Planned
+**Status:** Complete
 
 **Goal:** make the project portfolio-ready, observable, and easy to run and demonstrate.
 
-**Planned scope**
+**Scope**
 - Health, stats, metrics, and structured logging improvements
 - Deployment assets and secure configuration hardening
 - Demo corpus curation and evaluation set
 - Final docs for demo, deployment, and architecture
+
+**Delivered**
+- Request IDs, structured logging, runtime stats, and Prometheus metrics
+- Kubernetes manifest and updated deployment notes
+- Curated demo corpus plus evaluation set
+- Architecture, deployment, and evaluation documentation

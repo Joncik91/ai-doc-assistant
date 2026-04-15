@@ -1,0 +1,50 @@
+[
+  {
+    "id": "Q01",
+    "question": "Which authentication methods does the operator workspace support?",
+    "expected_sources": ["operator-workflow.md", "security-operating-model.md"],
+    "acceptance_criteria": "Answer mentions JWT and X-API-Key access."
+  },
+  {
+    "id": "Q02",
+    "question": "What file types can be uploaded for ingestion?",
+    "expected_sources": ["operator-workflow.md"],
+    "acceptance_criteria": "Answer mentions TXT, Markdown, PDF, and DOCX."
+  },
+  {
+    "id": "Q03",
+    "question": "What happens when a duplicate document is uploaded?",
+    "expected_sources": ["operator-workflow.md"],
+    "acceptance_criteria": "Answer explains that duplicates are detected and ignored."
+  },
+  {
+    "id": "Q04",
+    "question": "What safety controls protect the query endpoint?",
+    "expected_sources": ["security-operating-model.md"],
+    "acceptance_criteria": "Answer mentions guardrails, rate limiting, and audit logging."
+  },
+  {
+    "id": "Q05",
+    "question": "How do I inspect runtime activity during a demo?",
+    "expected_sources": ["security-operating-model.md", "deployment-notes.md"],
+    "acceptance_criteria": "Answer mentions stats, metrics, and request IDs."
+  },
+  {
+    "id": "Q06",
+    "question": "What is the primary deployment path for the demo?",
+    "expected_sources": ["deployment-notes.md"],
+    "acceptance_criteria": "Answer says Docker Compose is the primary supported path."
+  },
+  {
+    "id": "Q07",
+    "question": "How do citations appear in answers?",
+    "expected_sources": ["product-overview.md", "operator-workflow.md"],
+    "acceptance_criteria": "Answer mentions source citations and confidence information."
+  },
+  {
+    "id": "Q08",
+    "question": "What should the operator do if a document is no longer needed?",
+    "expected_sources": ["operator-workflow.md"],
+    "acceptance_criteria": "Answer says the operator can delete the document."
+  }
+]
