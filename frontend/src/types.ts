@@ -39,10 +39,23 @@ export interface DocumentRecord {
 }
 
 export interface DocumentUploadResponse {
-  document: DocumentRecord
+  filename: string
+  document: DocumentRecord | null
   created: boolean
   duplicate: boolean
+  warning: boolean
   chunks_created: number
+  message?: string | null
+  error?: string | null
+}
+
+export interface DocumentBatchUploadResponse {
+  results: DocumentUploadResponse[]
+  processed_count: number
+  created_count: number
+  warning_count: number
+  duplicate_count: number
+  failed_count: number
   message?: string | null
 }
 
@@ -61,6 +74,18 @@ export interface QueryResponse {
   finish_reason: string
   disclaimer?: string | null
 }
+
+export interface QueryStreamDeltaEvent {
+  type: 'delta'
+  delta: string
+}
+
+export interface QueryStreamFinalEvent {
+  type: 'final'
+  response: QueryResponse
+}
+
+export type QueryStreamEvent = QueryStreamDeltaEvent | QueryStreamFinalEvent
 
 export interface GuardrailCheckResponse {
   allowed: boolean

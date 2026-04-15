@@ -21,7 +21,7 @@ def collect_runtime_stats() -> RuntimeStatsResponse:
             """
             SELECT
                 COUNT(*) AS total,
-                COALESCE(SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END), 0) AS ready,
+                COALESCE(SUM(CASE WHEN status IN ('completed', 'warning', 'ready') THEN 1 ELSE 0 END), 0) AS ready,
                 COALESCE(SUM(CASE WHEN index_status = 'indexed' THEN 1 ELSE 0 END), 0) AS indexed,
                 COALESCE(SUM(CASE WHEN duplicate_of IS NOT NULL THEN 1 ELSE 0 END), 0) AS duplicates
             FROM documents

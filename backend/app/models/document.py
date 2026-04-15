@@ -11,10 +11,10 @@ from pydantic import BaseModel, ConfigDict, Field
 class DocumentStatus(str, Enum):
     """Lifecycle state for an uploaded document."""
 
-    uploaded = "uploaded"
+    queued = "queued"
     processing = "processing"
-    ready = "ready"
-    duplicate = "duplicate"
+    completed = "completed"
+    warning = "warning"
     failed = "failed"
 
 
@@ -48,7 +48,7 @@ class DocumentRecord(BaseModel):
                 "content_type": "application/pdf",
                 "size_bytes": 124002,
                 "fingerprint": "7f7a1b0c...",
-                "status": "ready",
+                "status": "completed",
                 "index_status": "pending",
                 "source_path": "./data/documents/doc_01HX.../employee-handbook.pdf",
                 "duplicate_of": None,
@@ -73,10 +73,25 @@ class DocumentListResponse(BaseModel):
 class DocumentUploadResponse(BaseModel):
     """Response returned after an upload attempt."""
 
-    document: DocumentRecord
+    filename: str
+    document: DocumentRecord | None = None
     created: bool
     duplicate: bool
+    warning: bool
     chunks_created: int
+    message: str | None = None
+    error: str | None = None
+
+
+class DocumentBatchUploadResponse(BaseModel):
+    """Response returned after a multi-file upload attempt."""
+
+    results: list[DocumentUploadResponse]
+    processed_count: int
+    created_count: int
+    warning_count: int
+    duplicate_count: int
+    failed_count: int
     message: str | None = None
 
 
@@ -85,4 +100,3 @@ class DocumentDeleteResponse(BaseModel):
 
     document_id: str
     deleted: bool = True
-

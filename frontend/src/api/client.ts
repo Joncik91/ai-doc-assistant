@@ -6,10 +6,11 @@ import type {
   ConfigInfo,
   CurrentUser,
   DocumentRecord,
-  DocumentUploadResponse,
+  DocumentBatchUploadResponse,
   GuardrailCheckResponse,
   HealthResponse,
   QueryResponse,
+  QueryStreamEvent,
   RuntimeStats,
   TokenResponse,
 } from '../types'
@@ -28,6 +29,13 @@ function authHeaders(session: AuthSession | null) {
   }
 
   return { Authorization: `Bearer ${session.token}` }
+}
+
+function queryHeaders(session: AuthSession | null) {
+  return {
+    'Content-Type': 'application/json',
+    ...authHeaders(session),
+  }
 }
 
 export async function getConfig() {
@@ -63,13 +71,15 @@ export async function getDocuments(session: AuthSession) {
 
 export async function uploadDocument(
   session: AuthSession,
-  file: File,
+  files: File[],
   onProgress?: (percent: number) => void,
 ) {
   const formData = new FormData()
-  formData.append('file', file)
+  files.forEach((file) => {
+    formData.append('files', file)
+  })
 
-  const { data } = await api.post<DocumentUploadResponse>('/documents/upload', formData, {
+  const { data } = await api.post<DocumentBatchUploadResponse>('/documents/upload', formData, {
     headers: authHeaders(session),
     onUploadProgress: (event) => {
       if (!onProgress || !event.total) {
@@ -117,6 +127,78 @@ export async function queryDocuments(
     { headers: authHeaders(session) },
   )
   return data
+}
+
+export async function streamQueryDocuments(
+  session: AuthSession,
+  question: string,
+  topK: number,
+  onDelta?: (delta: string) => void,
+) {
+  const response = await fetch('/api/v1/query/stream', {
+    method: 'POST',
+    headers: queryHeaders(session),
+    body: JSON.stringify({ question, top_k: topK }),
+  })
+
+  if (!response.ok) {
+    throw new Error(await response.text())
+  }
+
+  if (!response.body) {
+    throw new Error('Streaming is not supported in this browser.')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let finalResponse: QueryResponse | null = null
+
+  const consumeLine = (line: string) => {
+    if (!line.trim()) {
+      return
+    }
+
+    const event = JSON.parse(line) as QueryStreamEvent
+    if (event.type === 'delta') {
+      onDelta?.(event.delta)
+      return
+    }
+
+    finalResponse = event.response
+  }
+
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (value) {
+      buffer += decoder.decode(value, { stream: !done })
+    }
+
+    let newlineIndex = buffer.indexOf('\n')
+    while (newlineIndex >= 0) {
+      const line = buffer.slice(0, newlineIndex)
+      buffer = buffer.slice(newlineIndex + 1)
+      consumeLine(line)
+      newlineIndex = buffer.indexOf('\n')
+    }
+
+    if (done) {
+      break
+    }
+  }
+
+  buffer += decoder.decode()
+
+  const remainder = buffer.trim()
+  if (remainder) {
+    consumeLine(remainder)
+  }
+
+  if (!finalResponse) {
+    throw new Error('Stream ended without a final response.')
+  }
+
+  return finalResponse
 }
 
 export async function getAuditEvents(session: AuthSession, limit = 25) {

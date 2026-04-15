@@ -11,9 +11,9 @@ import {
   getProviderHealth,
   getRetrievalHealth,
   loginWithPassword,
-  queryDocuments,
   getRuntimeStats,
   uploadDocument,
+  streamQueryDocuments,
 } from './api/client'
 import type {
   AuditEventRecord,
@@ -30,6 +30,7 @@ import type {
 
 type Panel = 'overview' | 'documents' | 'chat' | 'audit'
 type LoginMode = 'password' | 'api-key'
+type ThemeMode = 'dark' | 'light'
 
 interface ChatTurn {
   id: string
@@ -122,6 +123,10 @@ function App() {
   const [authLoading, setAuthLoading] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
   const [loginMode, setLoginMode] = useState<LoginMode>('password')
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    const storedTheme = window.localStorage.getItem('ai-doc-assistant.theme')
+    return storedTheme === 'light' ? 'light' : 'dark'
+  })
   const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -135,7 +140,7 @@ function App() {
   const [providerHealth, setProviderHealth] = useState<HealthResponse | null>(null)
   const [runtimeStats, setRuntimeStats] = useState<RuntimeStats | null>(null)
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadMessage, setUploadMessage] = useState<string | null>(null)
@@ -147,7 +152,6 @@ function App() {
   const [chatError, setChatError] = useState<string | null>(null)
   const [querying, setQuerying] = useState(false)
   const [displayedAnswer, setDisplayedAnswer] = useState('')
-  const [streamTarget, setStreamTarget] = useState('')
   const [currentResponse, setCurrentResponse] = useState<QueryResponse | null>(null)
   const [chatTurns, setChatTurns] = useState<ChatTurn[]>([])
 
@@ -291,25 +295,9 @@ function App() {
   }, [chatTurns, question, session, topK])
 
   useEffect(() => {
-    if (!streamTarget) {
-      setDisplayedAnswer(currentResponse?.answer ?? '')
-      return
-    }
-
-    setDisplayedAnswer('')
-    let index = 0
-    const step = Math.max(1, Math.ceil(streamTarget.length / 48))
-    const timer = window.setInterval(() => {
-      index = Math.min(streamTarget.length, index + step)
-      setDisplayedAnswer(streamTarget.slice(0, index))
-      if (index >= streamTarget.length) {
-        window.clearInterval(timer)
-        setStreamTarget('')
-      }
-    }, 16)
-
-    return () => window.clearInterval(timer)
-  }, [currentResponse?.answer, streamTarget])
+    document.documentElement.dataset.theme = theme
+    window.localStorage.setItem('ai-doc-assistant.theme', theme)
+  }, [theme])
 
   const filteredAuditEvents = useMemo(() => {
     const needle = auditFilter.trim().toLowerCase()
@@ -332,10 +320,13 @@ function App() {
   }, [auditEvents, auditFilter])
 
   const documentStats = useMemo(() => {
-    const readyDocuments = documents.filter((document) => document.status === 'ready').length
+    const readyDocuments = documents.filter(
+      (document) =>
+        document.status === 'completed' || document.status === 'warning' || document.status === 'ready',
+    ).length
     return {
       total: documents.length,
-      ready: readyDocuments,
+      available: readyDocuments,
       indexedChunks: documents.reduce((count, document) => count + document.chunk_count, 0),
       duplicates: documents.filter((document) => document.duplicate_of).length,
     }
@@ -354,7 +345,9 @@ function App() {
     setGuardrailPreview(null)
     setCurrentResponse(null)
     setDisplayedAnswer('')
-    setStreamTarget('')
+    setSelectedFiles([])
+    setUploadMessage(null)
+    setUploadError(null)
     setActivePanel('overview')
   }
 
@@ -401,7 +394,7 @@ function App() {
 
   const handleUpload = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!session || !selectedFile) {
+    if (!session || !selectedFiles.length) {
       return
     }
 
@@ -413,9 +406,9 @@ function App() {
     const form = event.currentTarget
 
     try {
-      const response = await uploadDocument(session, selectedFile, setUploadProgress)
+      const response = await uploadDocument(session, selectedFiles, setUploadProgress)
       setUploadMessage(response.message ?? 'Document uploaded.')
-      setSelectedFile(null)
+      setSelectedFiles([])
       await refreshWorkspace(session)
       form.reset()
     } catch (error) {
@@ -455,7 +448,6 @@ function App() {
     setChatError(null)
     setCurrentResponse(null)
     setDisplayedAnswer('')
-    setStreamTarget('')
     setQuerying(true)
 
     try {
@@ -468,9 +460,11 @@ function App() {
         return
       }
 
-      const response = await queryDocuments(session, prompt, topK)
+      const response = await streamQueryDocuments(session, prompt, topK, (delta) => {
+        setDisplayedAnswer((current) => current + delta)
+      })
       setCurrentResponse(response)
-      setStreamTarget(response.answer)
+      setDisplayedAnswer(response.answer)
       setChatTurns((current) => [
         {
           id: createId(),
@@ -501,7 +495,7 @@ function App() {
           <p className="eyebrow">AI Document Assistant</p>
           <h1>Operator workspace</h1>
           <p className="muted">
-            DeepSeek-powered retrieval, document control, chat memory, audit history, and guardrails.
+            DeepSeek-powered retrieval, document control, streaming chat, audit history, and guardrails.
           </p>
         </div>
         <div className="top-banner__meta">
@@ -510,6 +504,14 @@ function App() {
               {config.llm_provider} · {config.llm_model}
             </div>
           )}
+          <button
+            type="button"
+            className="button button--ghost"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            aria-pressed={theme === 'light'}
+          >
+            {theme === 'dark' ? 'Light theme' : 'Dark theme'}
+          </button>
           {hasSession && user && (
             <div className="pill pill--success">
               {user.username} · {user.auth_method}
@@ -665,7 +667,11 @@ function App() {
           <main className="content">
             {activePanel === 'overview' && (
               <section className="grid grid--overview">
-                <StatCard title="Documents" value={documentStats.total} note={`${documentStats.ready} ready`} />
+                <StatCard
+                  title="Documents"
+                  value={documentStats.total}
+                  note={`${documentStats.available} available`}
+                />
                 <StatCard
                   title="Chunks"
                   value={documentStats.indexedChunks}
@@ -712,19 +718,24 @@ function App() {
 
                   <form className="upload-form" onSubmit={handleUpload}>
                     <label className="field">
-                      <span>Source file</span>
+                      <span>Source files</span>
                       <input
                         type="file"
                         accept=".txt,.md,.markdown,.pdf,.docx"
-                        onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                        multiple
+                        onChange={(event) => setSelectedFiles(Array.from(event.target.files ?? []))}
                       />
                     </label>
 
                     <div className="upload-actions">
-                      <button type="submit" className="button button--primary" disabled={!selectedFile || uploading}>
-                        {uploading ? `Uploading… ${uploadProgress}%` : 'Upload document'}
+                      <button type="submit" className="button button--primary" disabled={!selectedFiles.length || uploading}>
+                        {uploading ? `Uploading… ${uploadProgress}%` : 'Upload files'}
                       </button>
-                      <span className="muted">{selectedFile ? selectedFile.name : 'Choose a TXT, MD, PDF, or DOCX file.'}</span>
+                      <span className="muted">
+                        {selectedFiles.length
+                          ? `${selectedFiles.length} file(s): ${selectedFiles.map((file) => file.name).join(', ')}`
+                          : 'Choose one or more TXT, MD, PDF, or DOCX files.'}
+                      </span>
                     </div>
 
                     {uploadError && <div className="alert alert--error">{uploadError}</div>}
@@ -893,6 +904,7 @@ function App() {
                     <div className="answer-box">
                       {displayedAnswer || 'Your answer will appear here after a query.'}
                     </div>
+                    {querying && <p className="muted answer-status">Streaming answer from the server…</p>}
                     {currentResponse?.disclaimer && (
                       <p className="muted answer-disclaimer">{currentResponse.disclaimer}</p>
                     )}
@@ -902,16 +914,25 @@ function App() {
                     <h3>Citations</h3>
                     <div className="stack stack--small">
                       {currentResponse?.citations.map((citation) => (
-                        <article key={`${citation.chunk_id ?? citation.source}-${citation.source}`} className="citation-card">
-                          <div className="citation-card__header">
-                            <strong>{citation.source}</strong>
-                            <span className="muted">
-                              {citation.page ? `Page ${citation.page}` : 'No page'} ·{' '}
-                              {Math.round(citation.relevance_score * 100)}%
-                            </span>
+                        <details key={`${citation.chunk_id ?? citation.source}-${citation.source}`} className="citation-card">
+                          <summary className="citation-card__summary">
+                            <div className="citation-card__summary-title">
+                              <strong>{citation.source}</strong>
+                              <span className="muted">
+                                {citation.page ? `Page ${citation.page}` : 'No page'} ·{' '}
+                                {Math.round(citation.relevance_score * 100)}%
+                              </span>
+                            </div>
+                            <span className="pill pill--neutral">Expand</span>
+                          </summary>
+                          <div className="citation-card__body stack stack--small">
+                            {citation.excerpt ? <p>{citation.excerpt}</p> : <p className="muted">No excerpt available.</p>}
+                            <div className="stack stack--tiny">
+                              <span className="muted">Chunk: {citation.chunk_id ?? 'unknown'}</span>
+                              <span className="muted">Source: {citation.source}</span>
+                            </div>
                           </div>
-                          {citation.excerpt && <p>{citation.excerpt}</p>}
-                        </article>
+                        </details>
                       ))}
                       {!currentResponse?.citations.length && (
                         <p className="muted">No citations yet.</p>

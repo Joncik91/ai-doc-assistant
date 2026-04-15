@@ -4,6 +4,7 @@ import logging
 from typing import Optional
 from app.llm.provider import LLMProvider
 from app.llm.deepseek import DeepSeekProvider
+from app.llm.ollama import OllamaProvider
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,9 @@ def get_provider() -> LLMProvider:
         if provider_name == "deepseek":
             _provider = DeepSeekProvider()
             logger.info(f"Initialized DeepSeek provider: {settings.llm_model}")
+        elif provider_name == "ollama":
+            _provider = OllamaProvider()
+            logger.info("Initialized Ollama provider: %s", settings.llm_model)
         else:
             raise ValueError(f"Unknown LLM provider: {provider_name}")
 

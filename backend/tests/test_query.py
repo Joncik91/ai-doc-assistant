@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
 
 from app.auth.operators import bootstrap_operators
@@ -43,7 +45,7 @@ def test_query_returns_grounded_answer(monkeypatch) -> None:
     upload_response = client.post(
         "/api/v1/documents/upload",
         files={
-            "file": (
+            "files": (
                 "remote-policy.txt",
                 b"Remote work is allowed with manager approval.",
                 "text/plain",
@@ -65,6 +67,76 @@ def test_query_returns_grounded_answer(monkeypatch) -> None:
     assert "manager approval" in body["answer"]
     assert body["citations"]
     assert body["citations"][0]["source"] == "remote-policy.txt"
+
+    audit_response = client.get("/api/v1/audit/events", headers=_auth_headers())
+    assert audit_response.status_code == 200
+    events = audit_response.json()["events"]
+    assert events[0]["action"] == "query.executed"
+    assert events[0]["outcome"] == "success"
+    assert "manager approval" in events[0]["details"]["answer"]
+    assert events[0]["details"]["citations"][0]["source"] == "remote-policy.txt"
+
+
+def test_query_streams_incremental_answer(monkeypatch) -> None:
+    from app.retrieval import generator as generator_module
+
+    class FakeProvider:
+        async def generate(self, request):
+            return GenerationResponse(
+                content=(
+                    "Remote work is allowed with manager approval and a weekly check-in to confirm progress."
+                ),
+                finish_reason="stop",
+                model="mock",
+                usage={},
+            )
+
+        async def health_check(self) -> bool:
+            return True
+
+    monkeypatch.setattr(generator_module, "get_provider", lambda: FakeProvider())
+
+    upload_response = client.post(
+        "/api/v1/documents/upload",
+        files={
+            "files": (
+                "stream-policy.txt",
+                b"Remote work is allowed with manager approval and a weekly check-in to confirm progress.",
+                "text/plain",
+            )
+        },
+        headers=_auth_headers(),
+    )
+
+    assert upload_response.status_code == 200
+
+    with client.stream(
+        "POST",
+        "/api/v1/query/stream",
+        json={"question": "What is the remote work policy?", "top_k": 3},
+        headers=_auth_headers(),
+    ) as response:
+        assert response.status_code == 200
+        chunks: list[str] = []
+        final_response = None
+        for line in response.iter_lines():
+            if not line:
+                continue
+            payload = json.loads(line.decode() if isinstance(line, bytes) else line)
+            if payload["type"] == "delta":
+                chunks.append(payload["delta"])
+            elif payload["type"] == "final":
+                final_response = payload["response"]
+
+    assert len(chunks) > 1
+    assert final_response is not None
+    assert "".join(chunks) == final_response["answer"]
+
+    audit_response = client.get("/api/v1/audit/events", headers=_auth_headers())
+    assert audit_response.status_code == 200
+    events = audit_response.json()["events"]
+    assert events[0]["action"] == "query.executed"
+    assert events[0]["outcome"] == "success"
 
 
 def test_retrieval_health_reports_readiness() -> None:

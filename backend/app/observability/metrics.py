@@ -50,7 +50,7 @@ RUNTIME_DOCUMENTS_TOTAL = Gauge(
 )
 RUNTIME_DOCUMENTS_READY = Gauge(
     "ai_doc_assistant_runtime_documents_ready",
-    "Documents that reached the ready state",
+    "Documents that reached a completed or warning state",
 )
 RUNTIME_INDEXED_DOCUMENTS = Gauge(
     "ai_doc_assistant_runtime_indexed_documents",

@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.audit.store import create_audit_event
 from app.ingestion.service import ingest_upload
 from app.models.document import (
+    DocumentBatchUploadResponse,
     DocumentDeleteResponse,
     DocumentListResponse,
     DocumentRecord,
@@ -55,41 +56,153 @@ async def _read_upload(file: UploadFile) -> bytes:
     return data
 
 
-@router.post("/upload", response_model=DocumentUploadResponse)
-async def upload_document(
-    file: UploadFile = File(...),
-    auth_context: AuthContext = Depends(get_auth_context),
+def _result_outcome(result: DocumentUploadResponse) -> str:
+    if result.error:
+        return "failed"
+    if result.duplicate:
+        return "duplicate"
+    if result.warning:
+        return "warning"
+    return "success"
+
+
+def _audit_action(result: DocumentUploadResponse) -> str:
+    if result.error:
+        return "document.upload_failed"
+    if result.duplicate:
+        return "document.duplicate"
+    if result.warning:
+        return "document.warning"
+    return "document.uploaded"
+
+
+async def _process_upload(
+    file: UploadFile,
+    auth_context: AuthContext,
+    *,
+    fail_fast: bool,
 ) -> DocumentUploadResponse:
-    content = await _read_upload(file)
-    document, created, chunk_count = ingest_upload(
-        filename=file.filename or "document",
-        content_type=file.content_type or "application/octet-stream",
-        content=content,
-    )
+    filename = file.filename or "document"
+    try:
+        content = await _read_upload(file)
+    except HTTPException as exc:
+        message = str(exc.detail)
+        create_audit_event(
+            actor=auth_context.username,
+            auth_method=auth_context.auth_method,
+            action="document.upload_failed",
+            resource_type="document",
+            resource_id=None,
+            outcome="failed",
+            details={
+                "filename": filename,
+                "error": message,
+                "stage": "validation",
+            },
+        )
+        record_document_operation(operation="upload", outcome="failed")
+        if fail_fast:
+            raise
+        return DocumentUploadResponse(
+            filename=filename,
+            document=None,
+            created=False,
+            duplicate=False,
+            warning=False,
+            chunks_created=0,
+            message=message,
+            error=message,
+        )
+
+    try:
+        result = ingest_upload(
+            filename=filename,
+            content_type=file.content_type or "application/octet-stream",
+            content=content,
+            strict_errors=fail_fast,
+        )
+    except HTTPException as exc:
+        message = str(exc.detail)
+        create_audit_event(
+            actor=auth_context.username,
+            auth_method=auth_context.auth_method,
+            action="document.upload_failed",
+            resource_type="document",
+            resource_id=None,
+            outcome="failed",
+            details={
+                "filename": filename,
+                "error": message,
+                "stage": "ingestion",
+            },
+        )
+        record_document_operation(operation="upload", outcome="failed")
+        raise
+    details = {
+        "filename": result.filename,
+        "size_bytes": len(content),
+        "chunks_created": result.chunks_created,
+    }
+    if result.document is not None:
+        details["document_status"] = result.document.status.value
+        details["warnings"] = result.document.warnings
+        details["index_status"] = result.document.index_status
+    if result.error:
+        details["error"] = result.error
+
     create_audit_event(
         actor=auth_context.username,
         auth_method=auth_context.auth_method,
-        action="document.uploaded" if created else "document.duplicate",
+        action=_audit_action(result),
         resource_type="document",
-        resource_id=document.id,
-        outcome="success" if created else "duplicate",
-        details={
-            "filename": document.original_filename,
-            "size_bytes": document.size_bytes,
-            "chunks_created": chunk_count,
-        },
+        resource_id=result.document.id if result.document else None,
+        outcome=_result_outcome(result),
+        details=details,
     )
     record_document_operation(
         operation="upload",
-        outcome="created" if created else "duplicate",
+        outcome=_result_outcome(result),
     )
-    return DocumentUploadResponse(
-        document=document,
-        created=created,
-        duplicate=not created,
-        chunks_created=chunk_count,
-        message="Document ingested." if created else "Duplicate document ignored.",
+    return result
+
+
+def _summarize_uploads(results: list[DocumentUploadResponse]) -> DocumentBatchUploadResponse:
+    created_count = sum(1 for result in results if result.created)
+    warning_count = sum(1 for result in results if result.warning)
+    duplicate_count = sum(1 for result in results if result.duplicate)
+    failed_count = sum(1 for result in results if result.error)
+    processed_count = len(results)
+    message = (
+        f"Processed {processed_count} file(s): {created_count} created, "
+        f"{warning_count} with warnings, {duplicate_count} duplicates, {failed_count} failed."
     )
+    return DocumentBatchUploadResponse(
+        results=results,
+        processed_count=processed_count,
+        created_count=created_count,
+        warning_count=warning_count,
+        duplicate_count=duplicate_count,
+        failed_count=failed_count,
+        message=message,
+    )
+
+
+@router.post("/upload", response_model=DocumentBatchUploadResponse)
+async def upload_documents(
+    files: list[UploadFile] = File(...),
+    auth_context: AuthContext = Depends(get_auth_context),
+) -> DocumentBatchUploadResponse:
+    if not files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one file must be provided.",
+        )
+
+    fail_fast = len(files) == 1
+    results: list[DocumentUploadResponse] = []
+    for file in files:
+        results.append(await _process_upload(file, auth_context, fail_fast=fail_fast))
+    return _summarize_uploads(results)
 
 
 @router.get("", response_model=DocumentListResponse)

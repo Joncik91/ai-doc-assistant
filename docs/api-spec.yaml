@@ -1,0 +1,534 @@
+openapi: 3.1.0
+info:
+  title: AI Document Assistant API
+  version: 0.1.0
+  description: Versioned REST API for auth, ingestion, retrieval, audit, guardrails, and runtime stats.
+servers:
+  - url: http://localhost:8000
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service health
+  /api/v1/config:
+    get:
+      summary: Runtime configuration snapshot
+      responses:
+        "200":
+          description: Non-sensitive runtime config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigInfo"
+  /api/v1/auth/login:
+    post:
+      summary: Operator login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+  /api/v1/auth/me:
+    get:
+      summary: Resolve current operator
+      responses:
+        "200":
+          description: Current actor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUser"
+  /api/v1/documents/upload:
+    post:
+      summary: Upload one or more documents
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "200":
+          description: Batch upload result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentBatchUploadResponse"
+        "400":
+          description: No files provided or file was empty
+        "413":
+          description: Uploaded file exceeded the configured size limit
+        "415":
+          description: Uploaded file type is unsupported
+  /api/v1/documents:
+    get:
+      summary: List documents
+      responses:
+        "200":
+          description: Documents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentListResponse"
+  /api/v1/documents/{document_id}:
+    get:
+      summary: Get document detail
+      parameters:
+        - in: path
+          name: document_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentRecord"
+    delete:
+      summary: Delete a document
+      parameters:
+        - in: path
+          name: document_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+  /api/v1/query:
+    post:
+      summary: Ask a grounded question
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: Grounded answer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryResponse"
+  /api/v1/query/stream:
+    post:
+      summary: Stream a grounded question response
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: NDJSON stream of delta and final response events
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+  /api/v1/audit/events:
+    get:
+      summary: Recent audit events
+      responses:
+        "200":
+          description: Audit log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditEventListResponse"
+  /api/v1/guardrails/check:
+    post:
+      summary: Evaluate a prompt against guardrails
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuardrailCheckRequest"
+      responses:
+        "200":
+          description: Guardrail assessment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardrailCheckResponse"
+  /api/v1/health/provider:
+    get:
+      summary: Provider readiness
+      responses:
+        "200":
+          description: Provider health
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /api/v1/health/retrieval:
+    get:
+      summary: Retrieval readiness
+      responses:
+        "200":
+          description: Retrieval health
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /api/v1/stats:
+    get:
+      summary: Runtime dashboard snapshot
+      responses:
+        "200":
+          description: Runtime stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeStats"
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      responses:
+        "200":
+          description: Metrics payload
+          content:
+            text/plain:
+              schema:
+                type: string
+components:
+  schemas:
+    ConfigInfo:
+      type: object
+      required: [app_name, version, llm_provider, llm_model]
+      properties:
+        app_name:
+          type: string
+        version:
+          type: string
+        llm_provider:
+          type: string
+        llm_model:
+          type: string
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+        expires_in:
+          type: integer
+    CurrentUser:
+      type: object
+      required: [username, auth_method, scopes]
+      properties:
+        username:
+          type: string
+        auth_method:
+          type: string
+          enum: [jwt, api_key]
+        scopes:
+          type: array
+          items:
+            type: string
+    DocumentStatus:
+      type: string
+      enum: [queued, processing, completed, warning, failed]
+    DocumentRecord:
+      type: object
+      required:
+        [id, filename, original_filename, content_type, size_bytes, fingerprint, status, index_status, page_count, chunk_count, warnings, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        filename:
+          type: string
+        original_filename:
+          type: string
+        content_type:
+          type: string
+        size_bytes:
+          type: integer
+        fingerprint:
+          type: string
+        status:
+          $ref: "#/components/schemas/DocumentStatus"
+        index_status:
+          type: string
+        source_path:
+          type: [string, "null"]
+        duplicate_of:
+          type: [string, "null"]
+        page_count:
+          type: integer
+        chunk_count:
+          type: integer
+        warnings:
+          type: array
+          items:
+            type: string
+        error_message:
+          type: [string, "null"]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        indexed_at:
+          type: [string, "null"]
+          format: date-time
+    DocumentUploadResponse:
+      type: object
+      required: [filename, created, duplicate, warning, chunks_created]
+      properties:
+        filename:
+          type: string
+        document:
+          oneOf:
+            - $ref: "#/components/schemas/DocumentRecord"
+            - type: "null"
+        created:
+          type: boolean
+        duplicate:
+          type: boolean
+        warning:
+          type: boolean
+        chunks_created:
+          type: integer
+        message:
+          type: [string, "null"]
+        error:
+          type: [string, "null"]
+    DocumentBatchUploadResponse:
+      type: object
+      required: [results, processed_count, created_count, warning_count, duplicate_count, failed_count]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentUploadResponse"
+        processed_count:
+          type: integer
+        created_count:
+          type: integer
+        warning_count:
+          type: integer
+        duplicate_count:
+          type: integer
+        failed_count:
+          type: integer
+        message:
+          type: [string, "null"]
+    DocumentListResponse:
+      type: object
+      required: [documents]
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentRecord"
+    QueryRequest:
+      type: object
+      required: [question, top_k]
+      properties:
+        question:
+          type: string
+        top_k:
+          type: integer
+          minimum: 1
+          maximum: 10
+    Citation:
+      type: object
+      required: [source, relevance_score]
+      properties:
+        source:
+          type: string
+        page:
+          type: [integer, "null"]
+        chunk_id:
+          type: [string, "null"]
+        relevance_score:
+          type: number
+        excerpt:
+          type: [string, "null"]
+    QueryResponse:
+      type: object
+      required: [answer, citations, confidence, finish_reason]
+      properties:
+        answer:
+          type: string
+        citations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Citation"
+        confidence:
+          type: number
+        finish_reason:
+          type: string
+        disclaimer:
+          type: [string, "null"]
+    QueryStreamEvent:
+      oneOf:
+        - type: object
+          required: [type, delta]
+          properties:
+            type:
+              type: string
+              enum: [delta]
+            delta:
+              type: string
+        - type: object
+          required: [type, response]
+          properties:
+            type:
+              type: string
+              enum: [final]
+            response:
+              $ref: "#/components/schemas/QueryResponse"
+    AuditEventRecord:
+      type: object
+      required: [id, actor, auth_method, action, resource_type, outcome, details, created_at]
+      properties:
+        id:
+          type: string
+        actor:
+          type: string
+        auth_method:
+          type: string
+        action:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: [string, "null"]
+        outcome:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+    AuditEventListResponse:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEventRecord"
+    GuardrailCheckRequest:
+      type: object
+      required: [question, top_k]
+      properties:
+        question:
+          type: string
+        top_k:
+          type: integer
+    GuardrailCheckResponse:
+      type: object
+      required: [allowed, risk_level, warnings, blockers, recommended_action]
+      properties:
+        allowed:
+          type: boolean
+        risk_level:
+          type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        blockers:
+          type: array
+          items:
+            type: string
+        recommended_action:
+          type: string
+    HealthResponse:
+      type: object
+      required: [healthy, status]
+      properties:
+        healthy:
+          type: boolean
+        status:
+          type: string
+        provider:
+          type: [string, "null"]
+        model:
+          type: [string, "null"]
+        collection:
+          type: [string, "null"]
+        persist_directory:
+          type: [string, "null"]
+        indexed_chunks:
+          type: [integer, "null"]
+        indexed_documents:
+          type: [integer, "null"]
+        embedding_dimensions:
+          type: [integer, "null"]
+        error:
+          type: [string, "null"]
+    RuntimeStats:
+      type: object
+      required:
+        [generated_at, started_at, uptime_seconds, documents_total, documents_ready, indexed_documents, chunks_total, duplicate_documents, ingestion_events_total, audit_events_total, query_total, blocked_queries_total, failed_logins_total, distinct_actors, last_activity_at]
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        uptime_seconds:
+          type: integer
+        documents_total:
+          type: integer
+        documents_ready:
+          type: integer
+        indexed_documents:
+          type: integer
+        chunks_total:
+          type: integer
+        duplicate_documents:
+          type: integer
+        ingestion_events_total:
+          type: integer
+        audit_events_total:
+          type: integer
+        query_total:
+          type: integer
+        blocked_queries_total:
+          type: integer
+        failed_logins_total:
+          type: integer
+        distinct_actors:
+          type: integer
+        last_activity_at:
+          type: [string, "null"]
+          format: date-time

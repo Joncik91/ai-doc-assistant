@@ -31,6 +31,9 @@ Keep the following values in `.env` or the target deployment system:
 - `BOOTSTRAP_ADMIN_PASSWORD`
 - `BOOTSTRAP_API_KEY`
 
+The application does not ship hardcoded fallback credentials; these values must
+be provided explicitly for local runs and deployments.
+
 ## Kubernetes
 
 The repository also includes a single illustrative manifest in `k8s/stack.yaml`

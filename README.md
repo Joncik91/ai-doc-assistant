@@ -14,7 +14,7 @@ A portfolio-grade AI document assistant showcasing safe, disciplined software en
 # Set up environment (copy example)
 cp .env.example .env
 
-# Edit .env to add your DeepSeek API key:
+# Edit .env to add your model provider credentials:
 # LLM_API_KEY=your-deepseek-api-key-here
 
 # Start all services
@@ -31,6 +31,13 @@ docker compose up --build
 
 **Backend:**
 ```bash
+cp .env.example .env
+# Edit .env and set:
+# - LLM_API_KEY
+# - SECRET_KEY
+# - BOOTSTRAP_ADMIN_PASSWORD
+# - BOOTSTRAP_API_KEY
+
 cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
@@ -103,14 +110,16 @@ All configuration is environment-driven and centralized in `backend/app/config.p
 Key variables (see `.env.example`):
 
 - `DEBUG` – Enable debug mode
-- `LLM_PROVIDER` – LLM provider (deepseek)
+- `LLM_PROVIDER` – LLM provider (deepseek or ollama)
 - `LLM_API_KEY` – API key for the provider
-- `LLM_MODEL` – Model name
+- `LLM_MODEL` – Model name for the selected provider
 - `CHROMA_PERSIST_DIRECTORY` – Vector store location
 - `DOCUMENT_STORAGE_DIRECTORY` – Persisted upload location
 - `MAX_UPLOAD_SIZE_BYTES` – Maximum allowed upload size
 - `DATABASE_URL` – SQLite database path
-- `SECRET_KEY` – JWT secret (change in production)
+- `SECRET_KEY` – JWT secret (required)
+- `BOOTSTRAP_ADMIN_PASSWORD` – Operator bootstrap password (required)
+- `BOOTSTRAP_API_KEY` – API key for programmatic access (required)
 
 ## API
 
@@ -130,17 +139,19 @@ The backend exposes a REST API at `http://localhost:8000/api/v1/`.
 - `GET /metrics` – Prometheus-compatible metrics output
 
 ### Documents and retrieval
-- `POST /api/v1/documents/upload` – Upload and ingest a document
+- `POST /api/v1/documents/upload` – Upload and ingest one or more documents
 - `GET /api/v1/documents` – List indexed documents
 - `GET /api/v1/documents/{document_id}` – Inspect a single document
 - `DELETE /api/v1/documents/{document_id}` – Remove a document and its indexed chunks
 - `POST /api/v1/query` – Ask a grounded question over indexed chunks
+- `POST /api/v1/query/stream` – Stream a grounded question response over indexed chunks
 - `GET /api/v1/health/retrieval` – Vector-store readiness status
 
 ### Operator workspace
 - Browser login with JWT or API key
 - Document registry, upload progress, and delete actions
-- Guardrail preview, session memory, citations, and audit history
+- Guardrail preview, streamed answers, session memory, citations, and audit history
+- Dark and light theme support
 - Runtime stats, health cards, and release-readiness signals
 
 ## Design Principles
@@ -155,7 +166,7 @@ This project demonstrates:
 
 Currently configured for **DeepSeek** via OpenAI-compatible API.
 
-The provider is abstracted behind a contract in `backend/app/llm/` so other providers (Ollama, GPT, Claude) can be added without changing routes or the UI.
+The provider is abstracted behind a contract in `backend/app/llm/`, and the repo now also ships an **Ollama** adapter behind the same interface so provider selection stays environment-driven.
 
 ## Vector Search
 

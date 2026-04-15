@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import re
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import HTTPException, status
 
+from app.guardrails.pii import scan_text_for_pii
 from app.ingestion.chunker import chunk_pages
 from app.ingestion.extractors import extract_document
-from app.models.document import DocumentRecord, DocumentStatus
+from app.models.document import DocumentStatus, DocumentUploadResponse
 from app.retrieval.store import index_document
 from app.storage.database import get_storage_root
 from app.storage.documents import (
@@ -37,12 +39,25 @@ def _storage_path(document_id: str, filename: str) -> Path:
     return destination / _safe_filename(filename)
 
 
+def _deduplicate_warnings(*groups: list[str]) -> list[str]:
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for group in groups:
+        for warning in group:
+            normalized = warning.strip()
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                warnings.append(normalized)
+    return warnings
+
+
 def ingest_upload(
     *,
     filename: str,
     content_type: str,
     content: bytes,
-) -> tuple[DocumentRecord, bool, int]:
+    strict_errors: bool = False,
+) -> DocumentUploadResponse:
     """Persist an uploaded file and extract chunks."""
 
     fingerprint = _fingerprint(content)
@@ -54,7 +69,15 @@ def ingest_upload(
             message="Duplicate upload ignored.",
             details={"filename": filename, "fingerprint": fingerprint},
         )
-        return existing, False, 0
+        return DocumentUploadResponse(
+            filename=filename,
+            document=existing,
+            created=False,
+            duplicate=True,
+            warning=False,
+            chunks_created=0,
+            message="Duplicate document ignored.",
+        )
 
     document = create_document(
         filename=_safe_filename(filename),
@@ -63,26 +86,28 @@ def ingest_upload(
         size_bytes=len(content),
         fingerprint=fingerprint,
         source_path=None,
-        status=DocumentStatus.uploaded,
+        status=DocumentStatus.queued,
     )
     assert document is not None
 
-    source_path = _storage_path(document.id, filename)
-    source_path.write_bytes(content)
-    update_document(document.id, source_path=str(source_path))
-
-    update_document(document.id, status=DocumentStatus.processing)
-    create_ingestion_event(
-        document.id,
-        event_type="uploaded",
-        message="Upload stored and ready for extraction.",
-        details={"size_bytes": len(content), "fingerprint": fingerprint},
-    )
-
     try:
+        source_path = _storage_path(document.id, filename)
+        source_path.write_bytes(content)
+        update_document(document.id, source_path=str(source_path), status=DocumentStatus.processing)
+        create_ingestion_event(
+            document.id,
+            event_type="uploaded",
+            message="Upload stored and ready for extraction.",
+            details={"size_bytes": len(content), "fingerprint": fingerprint},
+        )
+
         extraction = extract_document(source_path)
+        warnings = list(extraction.warnings)
         if not extraction.text.strip():
-            extraction.warnings.append("No extractable text was found in the document.")
+            warnings.append("No extractable text was found in the document.")
+
+        pii_findings = scan_text_for_pii(extraction.text)
+        warnings = _deduplicate_warnings(warnings, [finding.warning for finding in pii_findings])
 
         chunks = chunk_pages(
             extraction.pages,
@@ -103,27 +128,37 @@ def ingest_upload(
         replace_document_chunks(document.id, chunk_payloads)
         index_document(document.id)
 
+        final_status = DocumentStatus.warning if warnings else DocumentStatus.completed
         indexed_document = update_document(
             document.id,
-            status=DocumentStatus.ready,
+            status=final_status,
             index_status="indexed",
             page_count=len(extraction.pages),
             chunk_count=len(chunk_payloads),
-            warnings=extraction.warnings,
+            warnings=warnings,
         )
         create_ingestion_event(
             document.id,
-            event_type="extracted",
-            message="Document extracted and chunked.",
+            event_type="warning" if warnings else "completed",
+            message="Document ingested with warnings." if warnings else "Document ingested.",
             details={
                 "page_count": len(extraction.pages),
                 "chunk_count": len(chunk_payloads),
-                "warnings": extraction.warnings,
+                "warnings": warnings,
+                "pii_findings": [asdict(finding) for finding in pii_findings],
             },
         )
-        return indexed_document or document, True, len(chunk_payloads)
+        return DocumentUploadResponse(
+            filename=filename,
+            document=indexed_document or document,
+            created=True,
+            duplicate=False,
+            warning=bool(warnings),
+            chunks_created=len(chunk_payloads),
+            message="Document ingested with warnings." if warnings else "Document ingested.",
+        )
     except ValueError as exc:
-        update_document(
+        failed_document = update_document(
             document.id,
             status=DocumentStatus.failed,
             error_message=str(exc),
@@ -134,12 +169,23 @@ def ingest_upload(
             message="Document ingestion failed validation.",
             details={"error": str(exc)},
         )
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=str(exc),
-        ) from exc
-    except Exception as exc:  # noqa: BLE001 - persist the failure for the operator
-        update_document(
+        if strict_errors:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=str(exc),
+            ) from exc
+        return DocumentUploadResponse(
+            filename=filename,
+            document=failed_document or document,
+            created=False,
+            duplicate=False,
+            warning=False,
+            chunks_created=0,
+            message=str(exc),
+            error=str(exc),
+        )
+    except Exception as exc:  # noqa: BLE001 - surface the failure to the operator
+        failed_document = update_document(
             document.id,
             status=DocumentStatus.failed,
             error_message=str(exc),
@@ -150,4 +196,15 @@ def ingest_upload(
             message="Document ingestion failed.",
             details={"error": str(exc)},
         )
-        raise
+        if strict_errors:
+            raise
+        return DocumentUploadResponse(
+            filename=filename,
+            document=failed_document or document,
+            created=False,
+            duplicate=False,
+            warning=False,
+            chunks_created=0,
+            message=str(exc),
+            error=str(exc),
+        )

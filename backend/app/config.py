@@ -6,6 +6,7 @@ All settings are loaded from environment variables at startup.
 from functools import lru_cache
 from typing import Optional
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,12 +23,12 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # Auth
-    secret_key: str = "dev-secret-key-change-in-production"
+    secret_key: str = Field(...)
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     bootstrap_admin_username: str = "admin"
-    bootstrap_admin_password: str = "admin"
-    bootstrap_api_key: str = "dev-api-key-change-in-production"
+    bootstrap_admin_password: str = Field(...)
+    bootstrap_api_key: str = Field(...)
 
     # LLM Provider (DeepSeek)
     llm_provider: str = "deepseek"

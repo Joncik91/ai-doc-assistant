@@ -34,16 +34,18 @@ def test_upload_and_list_document(tmp_path: Path) -> None:
     with path.open("rb") as handle:
         response = client.post(
             "/api/v1/documents/upload",
-            files={"file": ("policy.txt", handle, "text/plain")},
+            files={"files": ("policy.txt", handle, "text/plain")},
             headers=_auth_headers(),
         )
 
     assert response.status_code == 200
     body = response.json()
-    assert body["created"] is True
-    assert body["document"]["status"] == "ready"
-    assert body["document"]["index_status"] == "indexed"
-    assert body["chunks_created"] >= 1
+    assert body["processed_count"] == 1
+    assert body["created_count"] == 1
+    assert body["results"][0]["created"] is True
+    assert body["results"][0]["document"]["status"] == "completed"
+    assert body["results"][0]["document"]["index_status"] == "indexed"
+    assert body["results"][0]["chunks_created"] >= 1
 
     list_response = client.get("/api/v1/documents", headers=_auth_headers())
     assert list_response.status_code == 200
@@ -56,25 +58,22 @@ def test_document_lookup_and_duplicate_detection(tmp_path: Path) -> None:
     path = tmp_path / "duplicate.txt"
     path.write_text("Duplicate detection content.", encoding="utf-8")
 
-    with path.open("rb") as handle:
-        first = client.post(
+    with path.open("rb") as first_handle, path.open("rb") as duplicate_handle:
+        response = client.post(
             "/api/v1/documents/upload",
-            files={"file": ("duplicate.txt", handle, "text/plain")},
+            files=[
+                ("files", ("duplicate-a.txt", first_handle, "text/plain")),
+                ("files", ("duplicate-b.txt", duplicate_handle, "text/plain")),
+            ],
             headers=_auth_headers(),
         )
 
-    assert first.status_code == 200
-    document_id = first.json()["document"]["id"]
-
-    with path.open("rb") as handle:
-        duplicate = client.post(
-            "/api/v1/documents/upload",
-            files={"file": ("duplicate.txt", handle, "text/plain")},
-            headers=_auth_headers(),
-        )
-
-    assert duplicate.status_code == 200
-    assert duplicate.json()["duplicate"] is True
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed_count"] == 2
+    assert body["created_count"] == 1
+    assert body["duplicate_count"] == 1
+    document_id = body["results"][0]["document"]["id"]
 
     detail = client.get(f"/api/v1/documents/{document_id}", headers=_auth_headers())
     assert detail.status_code == 200
@@ -87,7 +86,7 @@ def test_upload_rejects_oversized_files(monkeypatch) -> None:
 
     response = client.post(
         "/api/v1/documents/upload",
-        files={"file": ("large.txt", b"01234567890", "text/plain")},
+        files={"files": ("large.txt", b"01234567890", "text/plain")},
         headers=_auth_headers(),
     )
 
@@ -98,7 +97,7 @@ def test_upload_rejects_oversized_files(monkeypatch) -> None:
 def test_upload_rejects_unsupported_file_types() -> None:
     response = client.post(
         "/api/v1/documents/upload",
-        files={"file": ("unsupported.csv", b"col1,col2\n1,2\n", "text/csv")},
+        files={"files": ("unsupported.csv", b"col1,col2\n1,2\n", "text/csv")},
         headers=_auth_headers(),
     )
 
@@ -115,6 +114,51 @@ def test_upload_rejects_unsupported_file_types() -> None:
     assert failed_documents[0]["status"] == "failed"
 
 
+def test_multi_file_upload_reports_partial_failures(tmp_path: Path) -> None:
+    valid_path = tmp_path / "policy.txt"
+    valid_path.write_text("Unique mixed batch content for partial failure coverage.", encoding="utf-8")
+
+    with valid_path.open("rb") as valid_handle:
+        response = client.post(
+            "/api/v1/documents/upload",
+            files=[
+                ("files", ("policy.txt", valid_handle, "text/plain")),
+                ("files", ("unsupported.csv", b"unique_col1,unique_col2\n3,4\n", "text/csv")),
+            ],
+            headers=_auth_headers(),
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed_count"] == 2
+    assert body["created_count"] == 1
+    assert body["failed_count"] == 1
+    assert any(result["created"] for result in body["results"])
+    assert any(result["error"] for result in body["results"])
+
+
+def test_upload_marks_pii_findings_as_warnings(tmp_path: Path) -> None:
+    path = tmp_path / "pii.txt"
+    path.write_text("Contact jane.doe@example.com for the latest policy.", encoding="utf-8")
+
+    with path.open("rb") as handle:
+        response = client.post(
+            "/api/v1/documents/upload",
+            files={"files": ("pii.txt", handle, "text/plain")},
+            headers=_auth_headers(),
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["warning_count"] == 1
+    assert body["results"][0]["warning"] is True
+    assert body["results"][0]["document"]["status"] == "warning"
+    assert any(
+        "email" in warning.lower()
+        for warning in body["results"][0]["document"]["warnings"]
+    )
+
+
 def test_delete_document_removes_registry_chunks_and_file(tmp_path: Path) -> None:
     path = tmp_path / "delete-me.txt"
     path.write_text("Delete me after indexing.", encoding="utf-8")
@@ -122,11 +166,11 @@ def test_delete_document_removes_registry_chunks_and_file(tmp_path: Path) -> Non
     with path.open("rb") as handle:
         upload_response = client.post(
             "/api/v1/documents/upload",
-            files={"file": ("delete-me.txt", handle, "text/plain")},
+            files={"files": ("delete-me.txt", handle, "text/plain")},
             headers=_auth_headers(),
         )
 
-    document_id = upload_response.json()["document"]["id"]
+    document_id = upload_response.json()["results"][0]["document"]["id"]
     stored_document = get_document(document_id)
     assert stored_document is not None
     assert stored_document.source_path is not None
@@ -160,11 +204,11 @@ def test_delete_returns_503_when_vector_store_is_unavailable(tmp_path: Path, mon
     with path.open("rb") as handle:
         upload_response = client.post(
             "/api/v1/documents/upload",
-            files={"file": ("vector-failure.txt", handle, "text/plain")},
+            files={"files": ("vector-failure.txt", handle, "text/plain")},
             headers=_auth_headers(),
         )
 
-    document_id = upload_response.json()["document"]["id"]
+    document_id = upload_response.json()["results"][0]["document"]["id"]
 
     def fail_delete(_: str) -> None:
         raise RuntimeError("vector store offline")

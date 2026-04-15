@@ -9,12 +9,19 @@ from typing import Any
 from app.models.document import DocumentRecord, DocumentStatus
 from app.storage.database import connect, dumps, loads, new_id
 
+LEGACY_STATUS_MAP = {
+    "uploaded": DocumentStatus.queued.value,
+    "ready": DocumentStatus.completed.value,
+    "duplicate": DocumentStatus.warning.value,
+}
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def _row_to_document(row: Any) -> DocumentRecord:
+    status_value = LEGACY_STATUS_MAP.get(row["status"], row["status"])
     return DocumentRecord(
         id=row["id"],
         filename=row["filename"],
@@ -22,7 +29,7 @@ def _row_to_document(row: Any) -> DocumentRecord:
         content_type=row["content_type"],
         size_bytes=row["size_bytes"],
         fingerprint=row["fingerprint"],
-        status=DocumentStatus(row["status"]),
+        status=DocumentStatus(status_value),
         index_status=row["index_status"],
         source_path=row["source_path"],
         duplicate_of=row["duplicate_of"],
@@ -70,7 +77,7 @@ def create_document(
     size_bytes: int,
     fingerprint: str,
     source_path: str | None,
-    status: DocumentStatus = DocumentStatus.uploaded,
+    status: DocumentStatus = DocumentStatus.queued,
 ) -> DocumentRecord:
     document_id = new_id("doc")
     timestamp = _now()
