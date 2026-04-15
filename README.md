@@ -76,7 +76,6 @@ npm run dev
 │   │   ├── main.tsx
 │   │   ├── App.tsx
 │   │   ├── api/          # API client
-│   │   ├── hooks/        # Custom React hooks
 │   │   ├── types.ts      # Shared UI types
 │   │   └── test/         # Frontend test setup
 │   ├── package.json

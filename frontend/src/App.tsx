@@ -14,7 +14,6 @@ import {
   queryDocuments,
   uploadDocument,
 } from './api/client'
-import { usePersistentState } from './hooks/usePersistentState'
 import type {
   AuditEventRecord,
   AuthSession,
@@ -101,17 +100,14 @@ function App() {
   const [config, setConfig] = useState<ConfigInfo | null>(null)
   const [loadingConfig, setLoadingConfig] = useState(true)
   const [configError, setConfigError] = useState<string | null>(null)
-  const [session, setSession] = usePersistentState<AuthSession | null>(
-    'ai-doc-assistant.session',
-    null,
-  )
+  const [session, setSession] = useState<AuthSession | null>(null)
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [authLoading, setAuthLoading] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
   const [loginMode, setLoginMode] = useState<LoginMode>('password')
   const [username, setUsername] = useState('admin')
-  const [password, setPassword] = useState('admin')
-  const [apiKey, setApiKey] = useState('dev-api-key-change-in-production')
+  const [password, setPassword] = useState('')
+  const [apiKey, setApiKey] = useState('')
 
   const [activePanel, setActivePanel] = useState<Panel>('overview')
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
@@ -135,10 +131,7 @@ function App() {
   const [displayedAnswer, setDisplayedAnswer] = useState('')
   const [streamTarget, setStreamTarget] = useState('')
   const [currentResponse, setCurrentResponse] = useState<QueryResponse | null>(null)
-  const [chatTurns, setChatTurns] = usePersistentState<ChatTurn[]>(
-    'ai-doc-assistant.chat-turns',
-    [],
-  )
+  const [chatTurns, setChatTurns] = useState<ChatTurn[]>([])
 
   const [auditFilter, setAuditFilter] = useState('')
 

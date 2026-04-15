@@ -27,7 +27,7 @@ describe('App', () => {
     vi.clearAllMocks()
   })
 
-  it('authenticates an operator and shows the document workspace', async () => {
+  function mockWorkspaceData() {
     mockedApi.getConfig.mockResolvedValue({
       app_name: 'AI Document Assistant',
       version: '0.1.0',
@@ -79,60 +79,37 @@ describe('App', () => {
       provider: 'deepseek',
       model: 'deepseek-chat',
     })
+  }
 
-    render(<App />)
-
-    await screen.findByRole('button', { name: /Open workspace/i })
+  async function signInWithPassword() {
+    fireEvent.change(screen.getByLabelText(/Password/i), {
+      target: { value: 'admin' },
+    })
     fireEvent.click(screen.getByRole('button', { name: /Open workspace/i }))
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Documents/i })).toBeInTheDocument()
     })
+  }
+
+  it('authenticates an operator and shows the document workspace', async () => {
+    mockWorkspaceData()
+
+    render(<App />)
+
+    await screen.findByRole('button', { name: /Open workspace/i })
+    await signInWithPassword()
 
     fireEvent.click(screen.getByRole('button', { name: /Documents/i }))
 
     await waitFor(() => {
       expect(screen.getByText('policy.txt', { selector: '.data-table strong' })).toBeInTheDocument()
     })
+    expect(window.localStorage.getItem('ai-doc-assistant.session')).toBeNull()
   })
 
   it('shows a grounded answer with citations and session memory', async () => {
-    window.localStorage.setItem(
-      'ai-doc-assistant.session',
-      JSON.stringify({
-        kind: 'jwt',
-        token: 'jwt-token',
-        username: 'admin',
-        scopes: ['read', 'write', 'admin'],
-      }),
-    )
-
-    mockedApi.getConfig.mockResolvedValue({
-      app_name: 'AI Document Assistant',
-      version: '0.1.0',
-      llm_provider: 'deepseek',
-      llm_model: 'deepseek-chat',
-    })
-    mockedApi.getCurrentUser.mockResolvedValue({
-      username: 'admin',
-      auth_method: 'jwt',
-      scopes: ['read', 'write', 'admin'],
-    })
-    mockedApi.getDocuments.mockResolvedValue([])
-    mockedApi.getAuditEvents.mockResolvedValue([])
-    mockedApi.getRetrievalHealth.mockResolvedValue({
-      healthy: true,
-      status: 'ready',
-      indexed_chunks: 0,
-      indexed_documents: 0,
-      embedding_dimensions: 256,
-    })
-    mockedApi.getProviderHealth.mockResolvedValue({
-      healthy: true,
-      status: 'ready',
-      provider: 'deepseek',
-      model: 'deepseek-chat',
-    })
+    mockWorkspaceData()
     mockedApi.checkGuardrails.mockResolvedValue({
       allowed: true,
       risk_level: 'low',
@@ -158,9 +135,8 @@ describe('App', () => {
 
     render(<App />)
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Chat/i })).toBeInTheDocument()
-    })
+    await screen.findByRole('button', { name: /Open workspace/i })
+    await signInWithPassword()
 
     fireEvent.click(screen.getByRole('button', { name: /Chat/i }))
     fireEvent.change(screen.getByLabelText(/Question/i), {
