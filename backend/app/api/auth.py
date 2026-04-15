@@ -12,6 +12,7 @@ from app.auth.credentials import (
     verify_password,
 )
 from app.api.dependencies import AuthContext, get_auth_context
+from app.audit.store import create_audit_event
 from app.auth.operators import get_operator_password_hash, operator_exists
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,14 @@ async def login(credentials: OperatorCredentials) -> Token:
     access_token, expires_at = create_access_token(subject=credentials.username)
     expires_in = int((expires_at - datetime.now(timezone.utc)).total_seconds())
 
+    create_audit_event(
+        actor=credentials.username,
+        auth_method="jwt",
+        action="auth.login",
+        resource_type="session",
+        outcome="success",
+        details={"scopes": ["read", "write", "admin"]},
+    )
     logger.info(f"Operator logged in: {credentials.username}")
     return Token(
         access_token=access_token,

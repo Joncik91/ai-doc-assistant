@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.api.dependencies import AuthContext, get_auth_context
 from app.config import get_settings
+from app.audit.store import create_audit_event
 from app.ingestion.service import ingest_upload
 from app.models.document import (
     DocumentDeleteResponse,
@@ -56,13 +57,26 @@ async def _read_upload(file: UploadFile) -> bytes:
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(
     file: UploadFile = File(...),
-    _: AuthContext = Depends(get_auth_context),
+    auth_context: AuthContext = Depends(get_auth_context),
 ) -> DocumentUploadResponse:
     content = await _read_upload(file)
     document, created, chunk_count = ingest_upload(
         filename=file.filename or "document",
         content_type=file.content_type or "application/octet-stream",
         content=content,
+    )
+    create_audit_event(
+        actor=auth_context.username,
+        auth_method=auth_context.auth_method,
+        action="document.uploaded" if created else "document.duplicate",
+        resource_type="document",
+        resource_id=document.id,
+        outcome="success" if created else "duplicate",
+        details={
+            "filename": document.original_filename,
+            "size_bytes": document.size_bytes,
+            "chunks_created": chunk_count,
+        },
     )
     return DocumentUploadResponse(
         document=document,
@@ -92,7 +106,7 @@ async def get_document_detail(
 @router.delete("/{document_id}", response_model=DocumentDeleteResponse)
 async def remove_document(
     document_id: str,
-    _: AuthContext = Depends(get_auth_context),
+    auth_context: AuthContext = Depends(get_auth_context),
 ) -> DocumentDeleteResponse:
     document = get_document(document_id)
     if not document:
@@ -110,4 +124,13 @@ async def remove_document(
     deleted = delete_document(document_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    create_audit_event(
+        actor=auth_context.username,
+        auth_method=auth_context.auth_method,
+        action="document.deleted",
+        resource_type="document",
+        resource_id=document_id,
+        outcome="success",
+        details={},
+    )
     return DocumentDeleteResponse(document_id=document_id, deleted=True)

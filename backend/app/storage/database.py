@@ -107,10 +107,24 @@ def initialize_database() -> None:
                 created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS audit_events (
+                id TEXT PRIMARY KEY,
+                actor TEXT NOT NULL,
+                auth_method TEXT NOT NULL,
+                action TEXT NOT NULL,
+                resource_type TEXT NOT NULL,
+                resource_id TEXT,
+                outcome TEXT NOT NULL,
+                details_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
             CREATE INDEX IF NOT EXISTS idx_documents_index_status ON documents(index_status);
             CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON document_chunks(document_id);
             CREATE INDEX IF NOT EXISTS idx_events_document_id ON ingestion_events(document_id);
+            CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_audit_events_actor ON audit_events(actor, created_at DESC);
             """
         )
 
@@ -140,6 +154,13 @@ def reset_local_state() -> None:
             pass
         get_client.cache_clear()
         get_collection.cache_clear()
+    except Exception:
+        pass
+
+    try:
+        from app.guardrails.rate_limit import reset_rate_limits
+
+        reset_rate_limits()
     except Exception:
         pass
 
