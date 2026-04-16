@@ -490,20 +490,15 @@ function App() {
 
   return (
     <div className="app-frame">
-      <header className="top-banner">
-        <div>
+      <header className="shell-header panel">
+        <div className="shell-header__copy">
           <p className="eyebrow">AI Document Assistant</p>
           <h1>Operator workspace</h1>
-          <p className="muted">
-            DeepSeek-powered retrieval, document control, streaming chat, audit history, and guardrails.
-          </p>
+          <p className="muted">Retrieval, document control, streaming chat, audit history, and guardrails.</p>
         </div>
-        <div className="top-banner__meta">
-          {config && (
-            <div className="pill pill--neutral">
-              {config.llm_provider} · {config.llm_model}
-            </div>
-          )}
+        <div className="shell-header__actions">
+          {config && <div className="pill pill--neutral">{config.llm_provider} · {config.llm_model}</div>}
+          {hasSession && user && <div className="pill pill--success">{user.username} · {user.auth_method}</div>}
           <button
             type="button"
             className="button button--ghost"
@@ -512,10 +507,10 @@ function App() {
           >
             {theme === 'dark' ? 'Light theme' : 'Dark theme'}
           </button>
-          {hasSession && user && (
-            <div className="pill pill--success">
-              {user.username} · {user.auth_method}
-            </div>
+          {hasSession && (
+            <button type="button" className="button button--ghost" onClick={startLogout}>
+              Sign out
+            </button>
           )}
         </div>
       </header>
@@ -528,12 +523,12 @@ function App() {
         <section className="login-layout">
           <div className="panel panel--intro">
             <p className="eyebrow">What this demo shows</p>
-            <h2>Secure operator flow</h2>
+            <h2>Minimal operator flow</h2>
             <ul className="feature-list">
               <li>JWT and API-key auth</li>
               <li>Document upload, duplicate detection, and delete</li>
               <li>Guardrail preflight and cited answers</li>
-              <li>Browser session memory and audit trail</li>
+              <li>Session memory and audit trail</li>
             </ul>
             {loadingConfig ? <p className="muted">Loading runtime config…</p> : null}
             {config && (
@@ -556,7 +551,10 @@ function App() {
 
           <form className="panel form-panel" onSubmit={handleLogin}>
             <div className="panel__header">
-              <h2>Sign in</h2>
+              <div>
+                <p className="eyebrow">Sign in</p>
+                <h2>Enter the workspace</h2>
+              </div>
               <div className="segmented-control" role="tablist" aria-label="Authentication mode">
                 <button
                   type="button"
@@ -642,9 +640,6 @@ function App() {
                   </div>
                 </div>
               )}
-              <button type="button" className="button button--ghost" onClick={startLogout}>
-                Sign out
-              </button>
             </div>
 
             <div className="sidebar__section">
