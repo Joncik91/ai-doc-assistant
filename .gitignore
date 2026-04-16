@@ -17,3 +17,6 @@ frontend/.vite/
 .vscode/
 *.log
 demo-corpus/devdocs/
+
+# Local launcher script
+start.sh
