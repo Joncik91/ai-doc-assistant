@@ -1,6 +1,30 @@
 # AI Document Assistant
 
-A portfolio-grade AI document assistant showcasing safe, disciplined software engineering practices.
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React + TypeScript](https://img.shields.io/badge/React%20%2B%20TypeScript-18%20·%205-3178C6?logo=react&logoColor=white)](https://react.dev/)
+[![Chroma](https://img.shields.io/badge/vector%20store-Chroma-E8954A)](https://www.trychroma.com/)
+[![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-E8954A.svg)](LICENSE)
+[![SOLID · DRY · YAGNI](https://img.shields.io/badge/SOLID%20·%20DRY%20·%20YAGNI-applied-E8954A)](#design-principles)
+
+**A portfolio-grade AI document assistant showcasing safe, disciplined software engineering practices.**
+
+Local-first retrieval (Chroma + deterministic embeddings) over a swappable LLM backend (DeepSeek by default, Ollama supported). FastAPI backend with JWT + API-key auth, rate limiting, PII detection, audit history, Prometheus metrics. React + TypeScript operator workspace. Ships with Docker Compose, illustrative Kubernetes manifests, demo corpus, and a sprint-planned roadmap.
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [API](#api)
+- [Design Principles](#design-principles)
+- [LLM Provider](#llm-provider)
+- [Vector Search](#vector-search)
+- [Testing](#testing)
+- [Deployment](#deployment)
+- [Roadmap](#roadmap)
+- [Security](#security)
+- [License](#license)
 
 ## Quick Start
 
@@ -205,6 +229,36 @@ See:
 
 The sprint plan is tracked in [`docs/SPRINTS.md`](docs/SPRINTS.md).
 
+## Security
+
+Security is treated as a first-class engineering concern, not a feature
+flag. The relevant surfaces:
+
+- **Auth.** Every API route except `/health`, `/api/v1/config`, and
+  `/api/v1/auth/login` requires either a JWT (operator workspace) or
+  an `X-API-Key` header (programmatic access). `BOOTSTRAP_ADMIN_PASSWORD`
+  and `BOOTSTRAP_API_KEY` are required environment variables — the
+  app refuses to start without them, so there is no "default password"
+  failure mode.
+- **Secrets.** `SECRET_KEY` (JWT signing), `LLM_API_KEY`, and the
+  bootstrap credentials are all environment-driven. `.env.example`
+  documents the surface; `.env` is gitignored. Don't commit `.env`.
+- **Rate limiting + PII.** The query path runs through a guardrail
+  preflight (`/api/v1/guardrails/check`) and a query-validation step
+  before reaching the LLM. PII detection is on by default.
+- **What leaves the host.** When `LLM_PROVIDER=deepseek`, the user
+  question + retrieved document chunks are sent to DeepSeek's API.
+  Switch to `LLM_PROVIDER=ollama` for a self-hosted endpoint where
+  nothing leaves the machine. Document storage and the vector index
+  are always local (`DOCUMENT_STORAGE_DIRECTORY`, `CHROMA_PERSIST_DIRECTORY`).
+- **Audit log.** Every operator action and query lands in the audit
+  store, queryable via `GET /api/v1/audit/events`. Useful for
+  reconstructing what an actor did and what was returned.
+
+Don't expose this to the public internet without a reverse proxy
+that terminates TLS, enforces additional rate limiting, and binds
+the service to authenticated networks (LAN, WireGuard, Tailscale).
+
 ## License
 
-Built as a portfolio project.
+MIT — see [LICENSE](LICENSE).
